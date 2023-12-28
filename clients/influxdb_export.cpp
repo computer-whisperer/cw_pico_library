@@ -14,6 +14,31 @@
 #include "cyw43_shim.h"
 #include "pico/cyw43_arch.h"
 
+static void tcp_err_cb_redirect(void *arg, err_t tpcb)
+{
+  ((InfluxDBExport*)arg)->tcp_err_handler(tpcb);
+}
+
+static err_t tcp_recv_cb_redirect(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
+{
+  return ((InfluxDBExport*)arg)->tcp_recv_handler(tpcb, p, err);
+}
+
+static err_t tcp_send_cb_redirect(void *arg, struct tcp_pcb *tpcb, u16_t len)
+{
+  return ((InfluxDBExport*)arg)->tcp_send_handler(tpcb, len);
+}
+
+static err_t connect_cb_redirect(void *arg, struct tcp_pcb *tpcb, err_t err)
+{
+  return ((InfluxDBExport*)arg)->connect_handler(tpcb, err);
+}
+
+static void dns_resolved_cb_redirect(const char *name, const ip_addr_t *ipaddr, void *callback_arg)
+{
+  ((InfluxDBExport*)callback_arg)->dns_resolved_cb(name, ipaddr);
+}
+
 
 InfluxDBExport::InfluxDBExport() {
   header_data = "POST /api/v2/write?org=Kalogon&bucket=qc_telemetry "
@@ -27,6 +52,9 @@ InfluxDBExport::InfluxDBExport() {
   {
     header_data += "Content-Encoding: gzip\r\n";
   }
+  influxdb_pcb = tcp_new();
+
+
 }
 
 
@@ -184,13 +212,10 @@ void InfluxDBExport::stage_working_buffer() {
   try_send_frame();
 }
 
-static void dns_resolved_cb_redirect(const char *name, const ip_addr_t *ipaddr, void *callback_arg)
-{
-  ((InfluxDBExport*)callback_arg)->dns_resolved_cb(name, ipaddr);
-}
+
 
 void InfluxDBExport::try_connect() {
-  if (connected || connecting)
+  if (connected || connecting || influxdb_pcb)
   {
     return;
   }
@@ -216,25 +241,7 @@ void InfluxDBExport::try_connect() {
   }
 }
 
-static void tcp_err_cb_redirect(void *arg, err_t tpcb)
-{
-  ((InfluxDBExport*)arg)->tcp_err_handler(tpcb);
-}
 
-static err_t tcp_recv_cb_redirect(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
-{
-  return ((InfluxDBExport*)arg)->tcp_recv_handler(tpcb, p, err);
-}
-
-static err_t tcp_send_cb_redirect(void *arg, struct tcp_pcb *tpcb, u16_t len)
-{
-  return ((InfluxDBExport*)arg)->tcp_send_handler(tpcb, len);
-}
-
-static err_t connect_cb_redirect(void *arg, struct tcp_pcb *tpcb, err_t err)
-{
-  return ((InfluxDBExport*)arg)->connect_handler(tpcb, err);
-}
 
 void InfluxDBExport::dns_resolved_cb(const char *string, const ip_addr *pAddr) {
   if (pAddr == nullptr)
@@ -256,6 +263,8 @@ void InfluxDBExport::dns_resolved_cb(const char *string, const ip_addr *pAddr) {
     if (ret != ERR_OK)
     {
       printf("InfluxDBExport: failed to connect %d\r\n", ret);
+      tcp_close(influxdb_pcb);
+      influxdb_pcb = nullptr;
       connecting = false;
     }
   }
@@ -265,14 +274,19 @@ void InfluxDBExport::tcp_err_handler(signed char i) {
   printf("Influxdb error cb, %d\r\n", i);
   tcp_close(influxdb_pcb);
   connecting = false;
+  influxdb_pcb = nullptr;
   connected = false;
 }
 
 err_t InfluxDBExport::tcp_recv_handler(tcp_pcb *pPcb, pbuf *pPbuf, signed char err) {
   if (pPbuf == NULL) {
-    tcp_close(influxdb_pcb);
-    connecting = false;
-    connected = false;
+    if (influxdb_pcb)
+    {
+      tcp_close(influxdb_pcb);
+      connecting = false;
+      connected = false;
+      influxdb_pcb = nullptr;
+    }
     printf("Disconnecting...\r\n");
   } else {
     /*
@@ -356,17 +370,30 @@ void InfluxDBExport::try_send_frame() {
 }
 
 void InfluxDBExport::update() {
-  if (!connected && !connecting)
+  bool ip_connected = cyw43_shim_tcpip_link_status(CYW43_ITF_STA) == CYW43_LINK_UP;
+  if (!connected && !connecting && do_connect && ip_connected)
   {
     if (absolute_time_diff_us(last_connect_attempt, get_absolute_time()) > 1000000)
     {
       try_connect();
     }
   }
+  if (false && absolute_time_diff_us(last_status_msg, get_absolute_time()) > 1000000)
+  {
+    last_status_msg = get_absolute_time();
+    printf("InfluxDB ip connected: %d, influx connecting: %d, influx connected: %d\r\n", ip_connected, connecting, connected);
+  }
 }
 
 void InfluxDBExport::disconnect() {
-
+  do_connect = false;
+  if (influxdb_pcb)
+  {
+    tcp_close(influxdb_pcb);
+    connecting = false;
+    influxdb_pcb = nullptr;
+    connected = false;
+  }
 }
 
 void InfluxDBExport::set_dut_name(std::string dut_name_in) {
@@ -483,5 +510,9 @@ uint32_t InfluxDBExport::get_staged_frame_count() {
 
 float InfluxDBExport::get_compression_ratio() {
   return (float)compressor_bytes_in/(float)compressor_bytes_out;
+}
+
+void InfluxDBExport::connect() {
+  do_connect = true;
 }
 
