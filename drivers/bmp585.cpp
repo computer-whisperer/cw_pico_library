@@ -3,23 +3,23 @@
 //
 
 #include <cstring>
-#include "bmp581.hpp"
+#include "bmp585.hpp"
 
 #include <cstdio>
 
-BMP581::BMP581(i2c_inst_t* i2c_bus_in, bool addr_select_in) :
+BMP585::BMP585(i2c_inst_t* i2c_bus_in, bool addr_select_in) :
         I2CPeripheralDriver(i2c_bus_in, get_i2c_address(addr_select_in))
 {
 }
 
-bool BMP581::check_device_presence(){
+bool BMP585::check_device_presence(){
   auto value = this->field_read(FIELD_CHIP_ID);
-  is_present = value == 0x50;
+  is_present = value == 0x51;
   return is_present;
 }
 
-void BMP581::initialize_device() {
-  printf("Initializing BMP581\r\n");
+void BMP585::initialize_device() {
+  printf("Initializing BMP585\r\n");
 
   // Reset unit
   this->field_write(FIELD_CMD, 0xB6);
@@ -32,15 +32,15 @@ void BMP581::initialize_device() {
   start_normal_mode(0x08, 0x03, 0x03);
 }
 
-//! Configure what measurements are stored in the bmp581 fifo registers
-void BMP581::set_fifo_mode(bool temp_in_fifo_in, bool press_in_fifo_in) {
+//! Configure what measurements are stored in the bmp585 fifo registers
+void BMP585::set_fifo_mode(bool temp_in_fifo_in, bool press_in_fifo_in) {
   this->temp_in_fifo = temp_in_fifo_in;
   this->press_in_fifo = press_in_fifo_in;
   // fifo_frame_sel is described in the datasheet. The 0x2 bit indicates pressure, and 0x1 bit indicates temperature.
   this->field_write(FIELD_FIFO_FRAME_SEL, (press_in_fifo_in << 1) | temp_in_fifo_in);
 }
 
-void BMP581::update() {
+void BMP585::update() {
   if (absolute_time_diff_us(last_fetch_timestamp, get_absolute_time()) > 100000)
   {
     pull_from_fifo();
@@ -48,24 +48,27 @@ void BMP581::update() {
   }
 }
 
-void BMP581::register_write(uint8_t addr, uint8_t value) {
+void BMP585::register_write(uint8_t addr, uint8_t value) {
   uint8_t buf[2];
   buf[0] = addr;
   buf[1] = value;
+  //i2c_write_blocking(i2c_bus, i2c_addr, buf, 2, false);
   //i2c_write_blocking_until(i2c_bus, i2c_addr, buf, 2, false, delayed_by_us(get_absolute_time(), 8000));
   i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, buf, 2, false, 100);
 }
 
-uint8_t BMP581::register_read(uint8_t addr) {
+uint8_t BMP585::register_read(uint8_t addr) {
+  //i2c_write_blocking(i2c_bus, i2c_addr, &addr, 1, true);
   i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &addr, 1, true, 100);
   //i2c_write_blocking_until(i2c_bus, i2c_addr, &addr, 1, true, delayed_by_us(get_absolute_time(), 8000));
   uint8_t data = 0;
+  //i2c_read_blocking(i2c_bus, i2c_addr, &data, 1, false);
   i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, &data, 1, false, 100);
   //i2c_read_blocking_until(i2c_bus, i2c_addr, &data, 1, false, delayed_by_us(get_absolute_time(), 8000));
   return data;
 }
 
-uint32_t BMP581::do_forced_measurement(float *temp_out, float *press_out) {
+uint32_t BMP585::do_forced_measurement(float *temp_out, float *press_out) {
   this->field_write(FIELD_PWR_MODE, 0x02);
   for (uint8_t i = 0; i < 10; i++) {
     sleep_ms(10);
@@ -86,10 +89,10 @@ uint32_t BMP581::do_forced_measurement(float *temp_out, float *press_out) {
 }
 
 /*!
- * Start the "normal" mode of the bmp581, where it will automatically sample on its own
+ * Start the "normal" mode of the bmp585, where it will automatically sample on its own
  * @param odr_state Sample rate configuration, see datasheet for details
  */
-void BMP581::start_normal_mode(int odr_state, int osr_p, int osr_t) {
+void BMP585::start_normal_mode(int odr_state, int osr_p, int osr_t) {
   // These two cause the FIFO to automatically drop old entries and
   // hold the max number of frames (32)
   this->field_write(FIELD_FIFO_THRESHOLD, 0x00);
@@ -184,7 +187,7 @@ void BMP581::start_normal_mode(int odr_state, int osr_p, int osr_t) {
   sample_period_us = (uint32_t)(1000000.0f/datasheet_frequency);
 }
 
-void BMP581::pull_from_fifo() {
+void BMP585::pull_from_fifo() {
   uint8_t available_samples = this->field_read(FIELD_FIFO_COUNT);
   uint8_t bytes_per_sample = 0;
   if (this->temp_in_fifo) {
@@ -199,7 +202,7 @@ void BMP581::pull_from_fifo() {
     memset(read_buffer, 0, sizeof(read_buffer));
     uint8_t bytes_to_read = available_samples * bytes_per_sample;
     assert(bytes_to_read <= sizeof(read_buffer));
-    uint8_t addr_value = BMP581::REG_FIFO_DATA;
+    uint8_t addr_value = BMP585::REG_FIFO_DATA;
 
     i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &addr_value, 1, true, 100);
     i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, read_buffer, bytes_to_read, false, 100);
@@ -212,19 +215,19 @@ void BMP581::pull_from_fifo() {
       if (read_ptr[0] == 0x7F) {
         // FIFO is empty or disabled
         // Somehow this state is actually reached sometimes. Nothing should break if this is reached, but it means that somehow
-        // the bmp581 told us there were more samples available then are actually readable.
+        // the bmp585 told us there were more samples available then are actually readable.
         break;
       }
       if (temp_in_fifo) {
         float value = process_temperature_data_C(read_ptr[2], read_ptr[1], read_ptr[0]);
-        //temperature_data_channel->push_new_value(value, from_us_since_boot(temp_data_timestamp));
+        temp_channel.new_data(value, from_us_since_boot(temp_data_timestamp));
         latest_temperature_c = value;
         temp_data_timestamp -= sample_period_us;
         read_ptr += 3;
       }
       if (press_in_fifo) {
         float value = process_pressure_data_kPa(read_ptr[2], read_ptr[1], read_ptr[0]);
-        //pressure_data_channel->push_new_value(value, from_us_since_boot(press_data_timestamp));
+        press_channel.new_data(value, from_us_since_boot(temp_data_timestamp));
         latest_pressure_kpa = value;
         press_data_timestamp -= sample_period_us;
         read_ptr += 3;

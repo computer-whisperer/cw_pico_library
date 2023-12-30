@@ -5,7 +5,6 @@
 #ifndef THERMO_SCOPE_BMP581_HPP
 #define THERMO_SCOPE_BMP581_HPP
 #include "i2c_bus_manager.hpp"
-#include "data_collection.hpp"
 
 /*!
  * This is a helper class for managing bmp581 register manipulation
@@ -44,10 +43,13 @@ public:
 };
 
 class BMP581: public I2CPeripheralDriver {
-  DataChannel* pressure_data_channel;
-  DataChannel* temperature_data_channel;
   bool press_in_fifo = false;
   bool temp_in_fifo = false;
+
+  float latest_pressure_kpa = 0;
+  float latest_temperature_c = 0;
+
+  uint32_t sample_period_us = 0;
 
   absolute_time_t last_fetch_timestamp = nil_time;
 public:
@@ -225,9 +227,19 @@ public:
 
   void set_fifo_mode(bool temp_in_fifo_in, bool press_in_fifo_in);
   uint32_t do_forced_measurement(float *temp_out, float *press_out);
-  void start_normal_mode(int odr_state);
+  void start_normal_mode(int odr_state, int osr_p, int osr_t);
 
   void pull_from_fifo();
+
+  float get_latest_pressure_kpa() const
+  {
+    return latest_pressure_kpa;
+  }
+
+  float get_latest_temperature_c() const
+  {
+    return latest_temperature_c;
+  }
 };
 
 #endif //THERMO_SCOPE_BMP581_HPP

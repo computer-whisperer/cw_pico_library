@@ -4,7 +4,10 @@
 
 #include <cstring>
 #include <string>
-#include "ublox_g7.hpp"
+#include "ublox_ubx.hpp"
+
+#include <time_manager.hpp>
+
 #include "hardware/gpio.h"
 #include "data_collection.hpp"
 #include "gpio_isr_mux.hpp"
@@ -23,12 +26,12 @@ static uart_inst_t * isr_uart_dev = nullptr;
 static critical_section_t critical_section;
 
 
-static uint64_t pps_timestamp = 0;
+static absolute_time_t pps_timestamp = nil_time;
 
 static void pps_gpio_isr(uint gpio, uint32_t event_mask)
 {
   if (event_mask & GPIO_IRQ_EDGE_RISE) {
-    pps_timestamp = to_us_since_boot(get_absolute_time());
+    pps_timestamp = get_absolute_time();
   }
 }
 
@@ -62,7 +65,7 @@ static void on_uart_rx()
   }
 }
 
-UBLOX_G7::UBLOX_G7(uart_inst_t *uart_dev_in, uint32_t tx_gpio_in, uint32_t rx_gpio_in, uint32_t pps_gpio_in):
+UBLOX_UBX::UBLOX_UBX(uart_inst_t *uart_dev_in, uint32_t tx_gpio_in, uint32_t rx_gpio_in, uint32_t pps_gpio_in):
         uart_dev(uart_dev_in),
         tx_gpio(tx_gpio_in),
         rx_gpio(rx_gpio_in),
@@ -106,6 +109,21 @@ UBLOX_G7::UBLOX_G7(uart_inst_t *uart_dev_in, uint32_t tx_gpio_in, uint32_t rx_gp
 #define UBX_CLASS_LOG 0x21
 #define UBX_CLASS_SEC 0x27
 
+#define UBX_NAV_AOPSTATUS 0x60
+#define UBX_NAV_CLOCK 0x22
+#define UBX_NAV_DGPS 0x31
+#define UBX_NAV_DOP 0x04
+#define UBX_NAV_POSECEF 0x01
+#define UBX_NAV_POSLLH 0x02
+#define UBX_NAV_PVT 0x07
+#define UBX_NAV_SBAS 0x32
+#define UBX_NAV_STATUS 0x03
+#define UBX_NAV_SVINFO 0x30
+#define UBX_NAV_TIMEGPS 0x20
+#define UBX_NAV_TIMEUTC 0x21
+#define UBX_NAV_VELECEF 0x11
+#define UBX_NAV_VELNED 0x12
+
 #define UBX_CFG_PRT 0x00
 #define UBX_CFG_PM2 0x3B
 #define UBX_CFG_PMS 0x86
@@ -116,12 +134,18 @@ UBLOX_G7::UBLOX_G7(uart_inst_t *uart_dev_in, uint32_t tx_gpio_in, uint32_t rx_gp
 #define UBX_CFG_GNSS 0x3E
 #define UBX_CFG_CFG 0x09
 
+#define UBX_AID_ALM 0x30
+#define UBX_AID_ALPSRV 0x32
+#define UBX_AID_ALP 0x50
+#define UBX_AID_AOP 0x33
+#define UBX_AID_DATA 0x10
+#define UBX_AID_EPH 0x31
+#define UBX_AID_HUI 0x02
+#define UBX_AID_INI 0x01
+#define UBX_AID_REQ 0x00
 
 
-
-// Apparently we have protocol version 14.00 on hand
-
-void UBLOX_G7::initialize_device() {
+void UBLOX_UBX::initialize_device() {
   uint32_t current_rate = discover_device_baudrate();
 
   if (true || current_rate != 115200)
@@ -158,6 +182,17 @@ void UBLOX_G7::initialize_device() {
     *((uint32_t*)&payload[28]) = 0x00000077; // flags;
     send_ubx(UBX_CLASS_CFG, UBX_CFG_TP5, payload, 32);
 
+    // Send sleep config/command
+    memset(payload, 0, sizeof(payload));
+    payload[0] = 0x01; // Version
+    *((uint32_t*)&payload[4]) = 0x00029000; // PSM config flags
+    *((uint32_t*)&payload[8]) = 1000; // Update period
+    *((uint32_t*)&payload[12]) = 10000; // Search period
+    *((uint32_t*)&payload[16]) = 0; // gridOffset
+    *((uint16_t*)&payload[20]) = 0; // onTime
+    *((uint16_t*)&payload[22]) = 0; // minAcqTime
+    send_ubx(UBX_CLASS_CFG, UBX_CFG_PM2, payload, 44);
+
     // Enable TIM-TP
     memset(payload, 0, sizeof(payload));
     payload[0] = UBX_CLASS_TIM;
@@ -165,19 +200,25 @@ void UBLOX_G7::initialize_device() {
     payload[3] = 1; // Set rate to 1 on port 1
     send_ubx(UBX_CLASS_CFG, UBX_CFG_MSG, payload, 8);
 
+    // Enable POSLLH
+    memset(payload, 0, sizeof(payload));
+    payload[0] = UBX_CLASS_NAV;
+    payload[1] = UBX_NAV_POSLLH;
+    payload[3] = 1; // Set rate to 1 on port 1
+    send_ubx(UBX_CLASS_CFG, UBX_CFG_MSG, payload, 8);
 
     // Save settings
-    memset(payload, 0, sizeof(payload));
-    *((uint32_t*)&payload[4]) = 0x0000061F;
+    //memset(payload, 0, sizeof(payload));
+    //*((uint32_t*)&payload[4]) = 0x0000061F;
     //*((uint32_t*)&payload[4]) = 0xFFFFFFFF;
-    send_ubx(UBX_CLASS_CFG, UBX_CFG_CFG, payload, 12);
+    //send_ubx(UBX_CLASS_CFG, UBX_CFG_CFG, payload, 12);
   }
 
 
 
 }
 
-void UBLOX_G7::send_ubx(uint8_t msg_class, uint8_t msg_id, uint8_t *payload, uint16_t payload_len)
+void UBLOX_UBX::send_ubx(uint8_t msg_class, uint8_t msg_id, uint8_t *payload, uint16_t payload_len)
 {
   uint32_t total_len = 8+payload_len;
   uint8_t buf[total_len];
@@ -192,7 +233,7 @@ void UBLOX_G7::send_ubx(uint8_t msg_class, uint8_t msg_id, uint8_t *payload, uin
   uart_write_blocking(uart_dev, buf, total_len);
 }
 
-void UBLOX_G7::ubx_csum(uint8_t *data, uint16_t data_len, uint8_t* ck_a_out, uint8_t* ck_b_out) {
+void UBLOX_UBX::ubx_csum(uint8_t *data, uint16_t data_len, uint8_t* ck_a_out, uint8_t* ck_b_out) {
   *ck_a_out = 0;
   *ck_b_out = 0;
   for (uint16_t i = 0; i < data_len; i++) {
@@ -200,7 +241,7 @@ void UBLOX_G7::ubx_csum(uint8_t *data, uint16_t data_len, uint8_t* ck_a_out, uin
     *ck_b_out += *ck_a_out;
   }
 }
-void UBLOX_G7::handle_message(uint8_t *data, uint16_t data_len) {
+void UBLOX_UBX::handle_message(uint8_t *data, uint16_t data_len) {
   if (data_len < 4)
   {
     return;
@@ -232,28 +273,145 @@ void UBLOX_G7::handle_message(uint8_t *data, uint16_t data_len) {
   }
 }
 
-void UBLOX_G7::handle_ubx_message(uint8_t msg_class, uint8_t msg_id, uint8_t *payload, uint16_t payload_len) {
+void UBLOX_UBX::handle_ubx_message(uint8_t msg_class, uint8_t msg_id, uint8_t *payload, uint16_t payload_len) {
+  bool handled = false;
   // Align payload
   uint8_t aligned_buf[payload_len];
   memcpy(aligned_buf, payload, payload_len);
-  if (msg_class == UBX_CLASS_TIM)
-  {
-    if (msg_id == UBX_TIM_TP)
-    {
-      uint32_t towMS = *(uint32_t*)(aligned_buf + 0);
-      uint32_t towSubMS = *(uint32_t*)(aligned_buf + 4);
-      int32_t qErr = *(int32_t*)(aligned_buf + 8);
-      uint16_t week = *(uint16_t*)(aligned_buf + 12);
-      uint8_t flags = *(uint8_t*)(aligned_buf + 14);
+  switch (msg_class) {
+    case UBX_CLASS_ACK:
+      switch (msg_id) {
+        default:
+          handled = true;
+          break;
+      }
+      break;
+    case UBX_CLASS_CFG:
+    case UBX_CLASS_TIM:
+      if (msg_id == UBX_TIM_TP)
+      {
+        uint32_t towMS = *(uint32_t*)(aligned_buf + 0);
+        uint32_t towSubMS = *(uint32_t*)(aligned_buf + 4);
+        int32_t qErr = *(int32_t*)(aligned_buf + 8);
+        uint16_t week = *(uint16_t*)(aligned_buf + 12);
+        uint8_t flags = *(uint8_t*)(aligned_buf + 14);
 
-      uint64_t timestamp_us = 315964800000000 + week*604800000000 + towMS*(uint64_t)1000;
-      most_recent_timestamp_seen = timestamp_us;
-    }
+        uint64_t timestamp_us = 315964800000000 + week*604800000000 + towMS*(uint64_t)1000;
+        most_recent_timestamp_seen = timestamp_us;
+        handled = true;
+      }
+      break;
+    case UBX_CLASS_AID:
+      switch (msg_id) {
+        case UBX_AID_HUI: {
+          if (payload_len < 72) {
+            break;
+          }
+          printf("SVs: ");
+          uint32_t sv_values = 0;
+          memcpy(&sv_values, &aligned_buf[0], 4);
+          for (int8_t i = 31; i >= 0; i--) {
+            printf("%d", (sv_values >> i)&1);
+          }
+          printf("\r\n");
+          handled = true;
+          break;
+        }
+        case UBX_AID_EPH: {
+          if (payload_len < 8) {
+            break;
+          }
+          auto svid = *(uint32_t*)(aligned_buf + 0);
+          auto how = *(uint32_t*)(aligned_buf + 4);
+          handled = true;
+          if (payload_len < 104) {
+            // No ephemeris data
+            break;
+          }
+          printf("Have ephemeris data for %d (%d)\r\n", svid, how);
+          break;
+        }
+        case UBX_AID_ALM: {
+          if (payload_len < 8) {
+            break;
+          }
+          auto svid = *(uint32_t*)(aligned_buf + 0);
+          auto week = *(uint32_t*)(aligned_buf + 4);
+          handled = true;
+          if (payload_len < 40) {
+            // No ephemeris data
+            break;
+          }
+          printf("Have almanac data for %d (%d)\r\n", svid, week);
+          break;
+        }
+        default:
+          break;
+      }
+      break;
+    case UBX_CLASS_NAV:
+      switch (msg_id) {
+        case UBX_NAV_SVINFO: {
+          if (payload_len < 8) {
+            break;
+          }
+          auto iTOW = *(uint32_t*)(aligned_buf);
+          auto numCh = *(uint8_t*)(aligned_buf + 4);
+          auto globalFlags = *(uint8_t*)(aligned_buf + 5);
+          printf("Have %d sv.\r\n", numCh);
+          if (payload_len < 8 + numCh*12) {
+            break;
+          }
+          for (uint32_t i = 0; i < numCh; i++) {
+            uint8_t* channel_start = aligned_buf + 8 + i*12;
+            auto chn = *(uint8_t*)(aligned_buf + 0);
+            auto svid = *(uint8_t*)(aligned_buf + 1);
+            auto flags = *(uint8_t*)(aligned_buf + 2);
+            auto quality = *(uint8_t*)(aligned_buf + 3);
+            auto cno = *(uint8_t*)(aligned_buf + 4);
+            auto elev = *(int8_t*)(aligned_buf + 5);
+            auto azim = *(int16_t*)(aligned_buf + 6);
+            auto prRes = *(int32_t*)(aligned_buf + 8);
+            printf("SV: id:%d, flags:%d, qual:%d, cno:%d\r\n", svid, flags, quality, cno);
+          }
+          break;
+        }
+        case UBX_NAV_POSLLH: {
+          if (payload_len < 28) {
+            break;
+          }
+          auto iTOW = *(uint32_t*)(aligned_buf);
+          auto lon = *(int32_t*)(aligned_buf + 4);
+          auto lat = *(int32_t*)(aligned_buf + 8);
+          auto height = *(int32_t*)(aligned_buf + 12);
+          auto hMSL = *(int32_t*)(aligned_buf + 16);
+          auto hAcc = *(uint32_t*)(aligned_buf + 20);
+          auto vAcc = *(uint32_t*)(aligned_buf + 20);
+          float f_lat = static_cast<float>(lat) / 10000000.0f;
+          float f_lon = static_cast<float>(lon) / 10000000.0f;
+          float h_acc_m = static_cast<float>(hAcc)/1000;
+          float v_acc_m = static_cast<float>(vAcc)/1000;
+          printf("POSLLH: Lat: %f, Lon: %f, Height: %d, VAcc: %f, HAcc: %f\r\n", f_lat, f_lon, height, h_acc_m, v_acc_m);
+          longitude_channel.new_data(f_lon);
+          latitude_channel.new_data(f_lat);
+          h_acc_channel.new_data(h_acc_m);
+          handled = true;
+          break;
+        }
+        default:
+          break;
+      }
+      break;
+    default:
+      break;
+  }
+  if (!handled) {
+    printf("Unhandled UBX message: %02x %02x\r\n", msg_class, msg_id);
   }
 }
 
 
-uint32_t UBLOX_G7::discover_device_baudrate() {
+uint32_t UBLOX_UBX::discover_device_baudrate() {
   uint32_t baudrates_to_try[] = {115200, 9600};
   uint32_t current_rate;
 
@@ -268,6 +426,7 @@ uint32_t UBLOX_G7::discover_device_baudrate() {
       sleep_ms(1);
       if (!latest_full_messages.is_empty) {
         found = true;
+        printf("Found ublox gps at %d baud.\r\n", baudrate);
         break;
       }
     }
@@ -280,7 +439,7 @@ uint32_t UBLOX_G7::discover_device_baudrate() {
   return current_rate;
 }
 
-void UBLOX_G7::send_nmea(std::string body) {
+void UBLOX_UBX::send_nmea(std::string body) {
   uint8_t cksum = 0;
   for (auto c : body) {
     cksum ^= c;
@@ -291,7 +450,7 @@ void UBLOX_G7::send_nmea(std::string body) {
   uart_write_blocking(uart_dev, (uint8_t*)full_msg.c_str(), full_msg.length());
 }
 
-void UBLOX_G7::update() {
+void UBLOX_UBX::update() {
   bool were_there_messages = false;
   uint64_t prev_most_recent_timestamp_seen = most_recent_timestamp_seen;
   critical_section_enter_blocking(&critical_section);
@@ -302,23 +461,31 @@ void UBLOX_G7::update() {
   }
   latest_full_messages.clear();
   critical_section_exit(&critical_section);
-  if ((most_recent_timestamp_seen!= prev_most_recent_timestamp_seen) && (pps_timestamp != 0)) {
+  if ((most_recent_timestamp_seen!= prev_most_recent_timestamp_seen) && (!is_nil_time(pps_timestamp))) {
 
     // Sanity check for recent pps timestamp
-    if (!is_going_to_sleep && (to_us_since_boot(get_absolute_time()) - pps_timestamp) < 100*1000)
+    if (!is_going_to_sleep && absolute_time_diff_us(pps_timestamp, get_absolute_time()) < 100*1000)
     {
       // New time sync!
-      data_collection_update_gps_time(most_recent_timestamp_seen, pps_timestamp);
+      TimeManager::new_gps_time(most_recent_timestamp_seen, pps_timestamp);
     }
+  }
+
+  if (!is_going_to_sleep && absolute_time_diff_us(last_status_poll, get_absolute_time()) > 30*1000*1000) {
+    last_status_poll = get_absolute_time();
+
+    uint8_t payload[4] = {};
+    send_ubx(UBX_CLASS_NAV, UBX_NAV_SVINFO, payload, 0);
+    //send_ubx(UBX_CLASS_AID, UBX_AID_EPH, payload, 0);
+    //send_ubx(UBX_CLASS_AID, UBX_AID_ALM, payload, 0);
   }
 
   // Check if it's time to sleep
   if (do_power_save &&
       were_there_messages &&
-      !is_nil_time(data_collection_most_recent_gps_time_sync) &&
-      (absolute_time_diff_us(data_collection_most_recent_gps_time_sync, get_absolute_time()) < 60*1000000) &&
-      (is_nil_time(last_sleep_command_time) || (absolute_time_diff_us(last_sleep_command_time, get_absolute_time()) > 60*1000000)) &&
-      data_collection_recent_time_updates > 20)
+      !is_nil_time(TimeManager::get_time_of_most_recent_full_gps_fix()) &&
+      (absolute_time_diff_us(TimeManager::get_time_of_most_recent_full_gps_fix(), get_absolute_time()) < 60*1000000) &&
+      (is_nil_time(last_sleep_command_time) || (absolute_time_diff_us(last_sleep_command_time, get_absolute_time()) > 60*1000000)))
   {
     start_sleep();
   }
@@ -326,22 +493,22 @@ void UBLOX_G7::update() {
   // Check if it's time to wake (if it has been an hour since the last time sync)
   if (do_power_save &&
       !were_there_messages &&
-      (absolute_time_diff_us(data_collection_most_recent_gps_time_sync, get_absolute_time()) > 60*60*1000000LL) &&
+      (absolute_time_diff_us(TimeManager::get_time_of_most_recent_full_gps_fix(), get_absolute_time()) > 60*60*1000000LL) &&
       (absolute_time_diff_us(last_wake_command_time, get_absolute_time()) > 60*1000000LL))
   {
     start_wake();
   }
 }
 
-void UBLOX_G7::on_enter_dormant() {
+void UBLOX_UBX::on_enter_dormant() {
   start_sleep();
 }
 
-void UBLOX_G7::on_exit_dormant() {
+void UBLOX_UBX::on_exit_dormant() {
   start_wake();
 }
 
-void UBLOX_G7::start_sleep() {
+void UBLOX_UBX::start_sleep() {
   uint8_t payload[44];
   // Send sleep config/command
   memset(payload, 0, sizeof(payload));
@@ -365,7 +532,7 @@ void UBLOX_G7::start_sleep() {
   is_going_to_sleep = true;
 }
 
-void UBLOX_G7::start_wake() {
+void UBLOX_UBX::start_wake() {
   uint8_t payload = 0xFF;
   uart_write_blocking(uart_dev, &payload, sizeof(payload));
   is_going_to_sleep = false;

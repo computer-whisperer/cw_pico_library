@@ -15,7 +15,7 @@
 #include "lwip/pbuf.h"
 #include "pico/time.h"
 
-class InfluxDBExport {
+class InfluxDBClient {
   void write_and_escape(const char* input_text);
   struct uzlib_comp uzlib_comp_data = {};
   static constexpr uint32_t uzlib_hash_bits = 12;
@@ -26,6 +26,7 @@ class InfluxDBExport {
   uint32_t influxdb_port = 80;
   std::string header_data;
   std::string dut_name = "dut";
+  std::string bucket = "";
 
   struct tcp_pcb* influxdb_pcb = nullptr;
   const bool do_compression = true;
@@ -41,6 +42,8 @@ class InfluxDBExport {
   char working_buffer[16000];
   uint32_t working_buffer_pos = 0;
   void stage_working_buffer();
+  bool do_connect = true;
+  absolute_time_t last_status_msg = nil_time;
   public:
   uint32_t bytes_sent = 0;
   bool connecting = false;
@@ -51,7 +54,7 @@ class InfluxDBExport {
 
   const char * current_measurement;
   uint64_t current_timestamp_us = 0;
-  InfluxDBExport();
+  InfluxDBClient(const char* bucket_in);
   void try_connect();
   void start_measurement(const char* measurement, const char * tags, uint64_t timestamp_us);
   void end_measurement();
@@ -71,6 +74,7 @@ class InfluxDBExport {
   void update();
 
   void disconnect();
+  void connect();
 
   void set_dut_name(std::string dut_name_in);
 

@@ -13,6 +13,8 @@ protected:
   i2c_inst_t* i2c_bus;
   uint8_t i2c_addr;
 public:
+  virtual ~I2CPeripheralDriver() = default;
+
   bool is_present = false;
   I2CPeripheralDriver(i2c_inst_t* i2c_bus_in, uint8_t i2c_addr_in): i2c_bus(i2c_bus_in), i2c_addr(i2c_addr_in){};
   virtual void initialize_device(){};

@@ -4,12 +4,16 @@
 
 #include <cstring>
 #include "ntp_client.hpp"
+
+#include <time_manager.hpp>
+
 #include "lwip/err.h"
 #include "lwip/dns.h"
 #include "lwip/pbuf.h"
 #include "lwip/udp.h"
 #include "pico/time.h"
 #include "pico/cyw43_arch.h"
+#include "cyw43_shim.h"
 
 static void dns_resolved_cb_redirect(const char *name, const ip_addr_t *ipaddr, void *callback_arg)
 {
@@ -64,8 +68,9 @@ void NTPClient::ntp_recv(udp_pcb *pPcb, struct pbuf *pPbuf, const ip_addr_t *pAd
     pbuf_copy_partial(pPbuf, seconds_buf, sizeof(seconds_buf), 40);
     uint32_t seconds_since_1900 = seconds_buf[0] << 24 | seconds_buf[1] << 16 | seconds_buf[2] << 8 | seconds_buf[3];
     uint64_t seconds_since_1970 = seconds_since_1900 - NTP_DELTA;
-    current_offset_us = (seconds_since_1970 - (to_ms_since_boot(get_absolute_time())/1000l))*1000000ll;
-    printf("Got epoch: %lu\r\n", seconds_since_1970);
+    TimeManager::new_ntp_time(seconds_since_1970*1000*1000, get_absolute_time());
+    has_fix = true;
+    printf("Got epoch: %llu\r\n", seconds_since_1970);
   } else {
     printf("invalid ntp response\n");
   }
@@ -77,8 +82,21 @@ uint64_t NTPClient::get_current_offset_us() {
 }
 
 void NTPClient::update() {
+  if (cyw43_shim_tcpip_link_status(CYW43_ITF_STA) != CYW43_LINK_UP)
+  {
+    return;
+  }
+
+  if (pcb == nullptr)
+  {
+    cyw43_arch_lwip_begin();
+    pcb = udp_new_ip_type(IPADDR_TYPE_ANY);
+    udp_recv(pcb, recv_redirect, this);
+    cyw43_arch_lwip_end();
+  }
+
   bool do_query = false;
-  if (current_offset_us == 0) {
+  if (!has_fix) {
     if (absolute_time_diff_us(last_query_time, get_absolute_time()) > 1000000)
     {
       do_query = true;

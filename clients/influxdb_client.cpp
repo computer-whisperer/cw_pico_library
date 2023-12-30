@@ -3,7 +3,10 @@
 //
 #include <string>
 #include <cmath>
-#include "influxdb_export.hpp"
+#include "influxdb_client.hpp"
+
+#include <secrets.hpp>
+
 #include "lwip/ip_addr.h"
 #include "lwip/dns.h"
 #include "lwip/tcp.h"
@@ -16,32 +19,36 @@
 
 static void tcp_err_cb_redirect(void *arg, err_t tpcb)
 {
-  ((InfluxDBExport*)arg)->tcp_err_handler(tpcb);
+  ((InfluxDBClient*)arg)->tcp_err_handler(tpcb);
 }
 
 static err_t tcp_recv_cb_redirect(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
 {
-  return ((InfluxDBExport*)arg)->tcp_recv_handler(tpcb, p, err);
+  return ((InfluxDBClient*)arg)->tcp_recv_handler(tpcb, p, err);
 }
 
 static err_t tcp_send_cb_redirect(void *arg, struct tcp_pcb *tpcb, u16_t len)
 {
-  return ((InfluxDBExport*)arg)->tcp_send_handler(tpcb, len);
+  return ((InfluxDBClient*)arg)->tcp_send_handler(tpcb, len);
 }
 
 static err_t connect_cb_redirect(void *arg, struct tcp_pcb *tpcb, err_t err)
 {
-  return ((InfluxDBExport*)arg)->connect_handler(tpcb, err);
+  return ((InfluxDBClient*)arg)->connect_handler(tpcb, err);
 }
 
 static void dns_resolved_cb_redirect(const char *name, const ip_addr_t *ipaddr, void *callback_arg)
 {
-  ((InfluxDBExport*)callback_arg)->dns_resolved_cb(name, ipaddr);
+  ((InfluxDBClient*)callback_arg)->dns_resolved_cb(name, ipaddr);
 }
 
 
-InfluxDBExport::InfluxDBExport() {
-  header_data = "POST /api/v2/write?org=Kalogon&bucket=qc_telemetry "
+InfluxDBClient::InfluxDBClient(const char* bucket_in) {
+  influxdb_url = christian_influx_server_host;
+  influxdb_port = christian_influx_server_port;
+  influxdb_token = christian_influx_server_token;
+  bucket = bucket_in;
+  header_data = "POST /api/v2/write?org=Kalogon&bucket=" + bucket + " "
                 "HTTP/1.1\r\n"
                 "Connection: keep-alive\r\n"
                 "Keep-Alive: timeout=60, max=0\r\n"
@@ -53,13 +60,11 @@ InfluxDBExport::InfluxDBExport() {
     header_data += "Content-Encoding: gzip\r\n";
   }
   influxdb_pcb = tcp_new();
-
-
 }
 
 
 
-void InfluxDBExport::stage_working_buffer() {
+void InfluxDBClient::stage_working_buffer() {
   uint32_t data_to_stage_len;
   int dma_channel;
 
@@ -214,7 +219,7 @@ void InfluxDBExport::stage_working_buffer() {
 
 
 
-void InfluxDBExport::try_connect() {
+void InfluxDBClient::try_connect() {
   if (connected || connecting || influxdb_pcb)
   {
     return;
@@ -243,10 +248,10 @@ void InfluxDBExport::try_connect() {
 
 
 
-void InfluxDBExport::dns_resolved_cb(const char *string, const ip_addr *pAddr) {
+void InfluxDBClient::dns_resolved_cb(const char *string, const ip_addr *pAddr) {
   if (pAddr == nullptr)
   {
-    printf("InfluxDBExport: failed DNS resolution\r\n");
+    printf("InfluxDBClient: failed DNS resolution\r\n");
     connecting = false;
   }
   else
@@ -262,7 +267,7 @@ void InfluxDBExport::dns_resolved_cb(const char *string, const ip_addr *pAddr) {
     cyw43_arch_lwip_end();
     if (ret != ERR_OK)
     {
-      printf("InfluxDBExport: failed to connect %d\r\n", ret);
+      printf("InfluxDBClient: failed to connect %d\r\n", ret);
       tcp_close(influxdb_pcb);
       influxdb_pcb = nullptr;
       connecting = false;
@@ -270,7 +275,7 @@ void InfluxDBExport::dns_resolved_cb(const char *string, const ip_addr *pAddr) {
   }
 }
 
-void InfluxDBExport::tcp_err_handler(signed char i) {
+void InfluxDBClient::tcp_err_handler(signed char i) {
   printf("Influxdb error cb, %d\r\n", i);
   tcp_close(influxdb_pcb);
   connecting = false;
@@ -278,7 +283,7 @@ void InfluxDBExport::tcp_err_handler(signed char i) {
   connected = false;
 }
 
-err_t InfluxDBExport::tcp_recv_handler(tcp_pcb *pPcb, pbuf *pPbuf, signed char err) {
+err_t InfluxDBClient::tcp_recv_handler(tcp_pcb *pPcb, pbuf *pPbuf, signed char err) {
   if (pPbuf == NULL) {
     if (influxdb_pcb)
     {
@@ -303,13 +308,13 @@ err_t InfluxDBExport::tcp_recv_handler(tcp_pcb *pPcb, pbuf *pPbuf, signed char e
   return 0;
 }
 
-err_t InfluxDBExport::tcp_send_handler(struct tcp_pcb *tpcb, u16_t len) {
+err_t InfluxDBClient::tcp_send_handler(struct tcp_pcb *tpcb, u16_t len) {
   is_sending_frame = false;
   is_waiting_on_response = true;
   return ERR_OK;
 }
 
-err_t InfluxDBExport::connect_handler(tcp_pcb *pPcb, err_t err) {
+err_t InfluxDBClient::connect_handler(tcp_pcb *pPcb, err_t err) {
   if (err)
   {
     printf("InfluxDB connection err: %d", err);
@@ -328,7 +333,7 @@ err_t InfluxDBExport::connect_handler(tcp_pcb *pPcb, err_t err) {
 
 err_t tcp_write_ret = 0;
 
-void InfluxDBExport::try_send_frame() {
+void InfluxDBClient::try_send_frame() {
   if (!connected)
   {
     return;
@@ -369,7 +374,7 @@ void InfluxDBExport::try_send_frame() {
   cyw43_arch_lwip_end();
 }
 
-void InfluxDBExport::update() {
+void InfluxDBClient::update() {
   bool ip_connected = cyw43_shim_tcpip_link_status(CYW43_ITF_STA) == CYW43_LINK_UP;
   if (!connected && !connecting && do_connect && ip_connected)
   {
@@ -385,7 +390,7 @@ void InfluxDBExport::update() {
   }
 }
 
-void InfluxDBExport::disconnect() {
+void InfluxDBClient::disconnect() {
   do_connect = false;
   if (influxdb_pcb)
   {
@@ -396,11 +401,11 @@ void InfluxDBExport::disconnect() {
   }
 }
 
-void InfluxDBExport::set_dut_name(std::string dut_name_in) {
+void InfluxDBClient::set_dut_name(std::string dut_name_in) {
   this->dut_name = dut_name_in;
 }
 
-void InfluxDBExport::check_integrity() {
+void InfluxDBClient::check_integrity() {
   for (auto& staged_frame : staged_frames)
   {
     assert(staged_frame.start < sizeof(ready_for_tx_buffer));
@@ -408,7 +413,7 @@ void InfluxDBExport::check_integrity() {
   }
 }
 
-void InfluxDBExport::write_and_escape(const char *input_text) {
+void InfluxDBClient::write_and_escape(const char *input_text) {
   for (int i = 0; i < strlen(input_text); i++)
   {
     if (input_text[i] == ' ')
@@ -421,7 +426,7 @@ void InfluxDBExport::write_and_escape(const char *input_text) {
   }
 }
 
-void InfluxDBExport::start_measurement(const char *measurement, const char *tags, uint64_t timestamp_us) {
+void InfluxDBClient::start_measurement(const char *measurement, const char *tags, uint64_t timestamp_us) {
   if (current_measurement)
   {
     end_measurement();
@@ -433,7 +438,7 @@ void InfluxDBExport::start_measurement(const char *measurement, const char *tags
   current_timestamp_us = timestamp_us;
 }
 
-void InfluxDBExport::push_double(const char* measurement, const char * tags, const char* name, double value, uint64_t timestamp_us) {
+void InfluxDBClient::push_double(const char* measurement, const char * tags, const char* name, double value, uint64_t timestamp_us) {
   if (isnanf((float)value) || isinff((float)value))
   {
     return;
@@ -444,7 +449,7 @@ void InfluxDBExport::push_double(const char* measurement, const char * tags, con
   push_data_end();
 }
 
-void InfluxDBExport::push_float(const char* measurement, const char * tags, const char* name, float value, uint64_t timestamp_us) {
+void InfluxDBClient::push_float(const char* measurement, const char * tags, const char* name, float value, uint64_t timestamp_us) {
   if (isnanf(value) || isinff(value))
   {
     return;
@@ -456,14 +461,14 @@ void InfluxDBExport::push_float(const char* measurement, const char * tags, cons
 }
 
 
-void InfluxDBExport::push_uint32(const char *measurement, const char *tags, const char *name, uint32_t value, uint64_t timestamp_us) {
+void InfluxDBClient::push_uint32(const char *measurement, const char *tags, const char *name, uint32_t value, uint64_t timestamp_us) {
   push_data_start(measurement, tags, name, timestamp_us);
   working_buffer_pos += snprintf(working_buffer+working_buffer_pos, sizeof(working_buffer) - working_buffer_pos,
                                  "=%ld", value);
   push_data_end();
 }
 
-void InfluxDBExport::push_string(const char* measurement, const char * tags, const char* name, const char* value, uint64_t timestamp_us) {
+void InfluxDBClient::push_string(const char* measurement, const char * tags, const char* name, const char* value, uint64_t timestamp_us) {
   if (!value)
   {
     return;
@@ -474,7 +479,7 @@ void InfluxDBExport::push_string(const char* measurement, const char * tags, con
   push_data_end();
 }
 
-void InfluxDBExport::end_measurement() {
+void InfluxDBClient::end_measurement() {
   working_buffer_pos += snprintf(working_buffer+working_buffer_pos, sizeof(working_buffer) - working_buffer_pos,
                                  " %lld\n", current_timestamp_us * 1000);
   assert(working_buffer_pos < sizeof(working_buffer));
@@ -485,7 +490,7 @@ void InfluxDBExport::end_measurement() {
   current_measurement = nullptr;
 }
 
-void InfluxDBExport::push_data_start(const char *measurement, const char *tags, const char *name, uint64_t timestamp_us) {
+void InfluxDBClient::push_data_start(const char *measurement, const char *tags, const char *name, uint64_t timestamp_us) {
   if ((measurement != current_measurement) || (timestamp_us!= current_timestamp_us))
   {
     start_measurement(measurement, tags, timestamp_us);
@@ -497,22 +502,22 @@ void InfluxDBExport::push_data_start(const char *measurement, const char *tags, 
   write_and_escape(name);
 }
 
-void InfluxDBExport::push_data_end() {
+void InfluxDBClient::push_data_end() {
   if (working_buffer_pos > (sizeof(working_buffer) - 300))
   {
     end_measurement();
   }
 }
 
-uint32_t InfluxDBExport::get_staged_frame_count() {
+uint32_t InfluxDBClient::get_staged_frame_count() {
   return staged_frames.size();
 }
 
-float InfluxDBExport::get_compression_ratio() {
+float InfluxDBClient::get_compression_ratio() {
   return (float)compressor_bytes_in/(float)compressor_bytes_out;
 }
 
-void InfluxDBExport::connect() {
+void InfluxDBClient::connect() {
   do_connect = true;
 }
 

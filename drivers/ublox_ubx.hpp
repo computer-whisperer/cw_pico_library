@@ -9,8 +9,10 @@
 #include "ring_buffer.hpp"
 #include <pico/sync.h>
 #include <array>
+#include <telemetry_manager.hpp>
 
-class UBLOX_G7 {
+class UBLOX_UBX {
+  absolute_time_t last_status_poll = nil_time;
   uart_inst_t * uart_dev;
   uint32_t tx_gpio;
   uint32_t rx_gpio;
@@ -19,10 +21,13 @@ class UBLOX_G7 {
   absolute_time_t last_wake_command_time = nil_time;
   bool do_power_save = true;
   bool is_going_to_sleep = false;
+  TelemetryManager::Channel longitude_channel{"gps_longitude"};
+  TelemetryManager::Channel latitude_channel{"gps_latitude"};
+  TelemetryManager::Channel h_acc_channel{"gps_horizontal_accuracy", "m"};
 
   uint64_t most_recent_timestamp_seen = 0;
 public:
-  UBLOX_G7(uart_inst_t * uart_dev_in, uint32_t tx_gpio_in, uint32_t rx_gpio_in, uint32_t pps_gpio_in);
+  UBLOX_UBX(uart_inst_t * uart_dev_in, uint32_t tx_gpio_in, uint32_t rx_gpio_in, uint32_t pps_gpio_in);
 
   void send_ubx(uint8_t msg_class, uint8_t msg_id, uint8_t* payload, uint16_t payload_len);
   void send_nmea(std::string body);

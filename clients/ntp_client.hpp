@@ -11,6 +11,7 @@
 
 class NTPClient {
 private:
+  bool has_fix = false;
   struct udp_pcb *pcb;
   ip_addr_t resolved_address{};
   const std::string ntp_server = "pool.ntp.org";
