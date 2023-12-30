@@ -1,0 +1,6 @@
+[submodule "libs/TFT_eSPI"]
+	path = libs/TFT_eSPI
+	url = https://github.com/Bodmer/TFT_eSPI
+[submodule "libs/uzlib"]
+	path = libs/uzlib
+	url = https://github.com/pfalcon/uzlib
