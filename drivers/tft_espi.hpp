@@ -6,6 +6,7 @@
 #define TFT_ESPI_HPP
 #include <hardware/gpio.h>
 #include <hardware/spi.h>
+#include <pico/time.h>
 #include <src/hal/lv_hal_disp.h>
 
 class TFT_ESPI {
@@ -36,6 +37,7 @@ protected:
     void commandList(const uint8_t *addr);
     void writecommand(uint8_t);
     void writedata(uint8_t);
+    inline void delay(uint32_t t) {sleep_ms(t);}
     void setDC(bool is_data) const {
         gpio_put(dc_gpio, is_data);
     }
