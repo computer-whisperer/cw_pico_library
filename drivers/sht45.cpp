@@ -25,6 +25,7 @@ void SHT45::do_normal_sample() {
       rh_pRH = 0;
     temp_channel.new_data(t_degC);
     humidity_channel.new_data(rh_pRH);
+    TelemetryManager::set_best_humidity_rh(rh_pRH);
   }
 
   // Queue next conversion
@@ -67,5 +68,5 @@ void SHT45::update() {
 }
 
 void SHT45::initialize_device() {
-  printf("Initializing TSYS01\r\n");
+  printf("Initializing SHT45\r\n");
 }

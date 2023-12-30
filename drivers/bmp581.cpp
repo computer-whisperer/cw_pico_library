@@ -216,16 +216,19 @@ void BMP581::pull_from_fifo() {
         break;
       }
       if (temp_in_fifo) {
-        float value = process_temperature_data_C(read_ptr[2], read_ptr[1], read_ptr[0]);
-        //temperature_data_channel->push_new_value(value, from_us_since_boot(temp_data_timestamp));
-        latest_temperature_c = value;
+        if (read_ptr[2] | read_ptr[1] | read_ptr[0]) {
+          float value = process_temperature_data_C(read_ptr[2], read_ptr[1], read_ptr[0]);
+          temp_channel.new_data(value, from_us_since_boot(temp_data_timestamp));
+        }
         temp_data_timestamp -= sample_period_us;
         read_ptr += 3;
       }
       if (press_in_fifo) {
-        float value = process_pressure_data_kPa(read_ptr[2], read_ptr[1], read_ptr[0]);
-        //pressure_data_channel->push_new_value(value, from_us_since_boot(press_data_timestamp));
-        latest_pressure_kpa = value;
+        if (read_ptr[2] | read_ptr[1] | read_ptr[0]) {
+          float value = process_pressure_data_kPa(read_ptr[2], read_ptr[1], read_ptr[0]);
+          press_channel.new_data(value, from_us_since_boot(temp_data_timestamp));
+          TelemetryManager::set_best_pressure_kpa(value);
+        }
         press_data_timestamp -= sample_period_us;
         read_ptr += 3;
       }

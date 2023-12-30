@@ -9,9 +9,12 @@
 #include <vector>
 #include <pico/util/queue.h>
 
-
 class TelemetryManager
 {
+  double best_temperature_c = 0;
+  double best_humidity_rh = 0;
+  double best_pressure_kpa = 0;
+
   bool enable_influxdb = false;
   InfluxDBClient *influxdb_client = nullptr;
   std::string influxdb_measurement_heading;
@@ -24,6 +27,18 @@ class TelemetryManager
 
   queue_t intercore_influxdb_data_queue = {};
 public:
+  static void set_best_temperature_c(double temperature_c);
+
+  static void set_best_humidity_rh(double humidity_rh);
+
+  static void set_best_pressure_kpa(double pressure_kpa);
+
+  static double get_best_temperature_c();
+
+  static double get_best_humidity_rh();
+
+  static double get_best_pressure_kpa();
+
   class Channel
   {
     std::string influx_field_name;

@@ -28,6 +28,7 @@ void TSYS01::do_normal_sample() {
     raw_power *= raw_value;
     result += k4_coeff * raw_power;
     temp_channel.new_data(result);
+    TelemetryManager::set_best_temperature_c(result);
   }
 
   // Queue next conversion
@@ -52,7 +53,7 @@ bool TSYS01::check_device_presence(){
 }
 
 //! Byte swap unsigned short
-uint16_t swap_uint16( uint16_t val )
+static uint16_t swap_uint16( uint16_t val )
 {
   return (val << 8) | (val >> 8 );
 }

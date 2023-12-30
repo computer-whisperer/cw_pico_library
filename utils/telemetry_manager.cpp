@@ -11,6 +11,30 @@
 static TelemetryManager* telemetry_manager_instance = nullptr;
 static std::vector<TelemetryManager::Channel*> channels;
 
+void TelemetryManager::set_best_temperature_c(const double temperature_c) {
+  telemetry_manager_instance->best_temperature_c = temperature_c;
+}
+
+void TelemetryManager::set_best_humidity_rh(const double humidity_rh) {
+  telemetry_manager_instance->best_humidity_rh = humidity_rh;
+}
+
+void TelemetryManager::set_best_pressure_kpa(const double pressure_kpa) {
+  telemetry_manager_instance->best_pressure_kpa = pressure_kpa;
+}
+
+double TelemetryManager::get_best_temperature_c() {
+  return telemetry_manager_instance->best_temperature_c;
+}
+
+double TelemetryManager::get_best_humidity_rh() {
+  return telemetry_manager_instance->best_humidity_rh;
+}
+
+double TelemetryManager::get_best_pressure_kpa() {
+  return telemetry_manager_instance->best_pressure_kpa;
+}
+
 TelemetryManager::Channel::Channel(std::string name_in, std::string  unit_in) : name(std::move(name_in)), unit(std::move(unit_in)) {
   channels.push_back(this);
   influx_field_name = name + "_" + unit;
