@@ -6,10 +6,14 @@
 #include <string>
 #include "ublox_ubx.hpp"
 
+#include <cyw43.h>
+#include <cyw43_shim.h>
 #include <time_manager.hpp>
+#include <lwip/dns.h>
+#include <lwip/tcp.h>
+#include <pico/cyw43_arch.h>
 
 #include "hardware/gpio.h"
-#include "data_collection.hpp"
 #include "gpio_isr_mux.hpp"
 
 static constexpr uint32_t max_msg_len = 100;
@@ -93,6 +97,10 @@ UBLOX_UBX::UBLOX_UBX(uart_inst_t *uart_dev_in, uint32_t tx_gpio_in, uint32_t rx_
   uart_set_irq_enables(uart_dev, true, false);
 
   critical_section_init(&critical_section);
+
+  header_data = "GET /GetOnlineData.ashx?token=" + assistnow_online_token +
+              "HTTP/1.1\r\n"
+              "Host: " + assistnow_online_server + "\r\n";
 }
 
 #define UBX_CLASS_NAV 0x01
@@ -500,12 +508,164 @@ void UBLOX_UBX::update() {
   }
 }
 
+void UBLOX_UBX::lwip_update() {
+  if (assistnow_online_enabled) {
+    if (cyw43_shim_tcpip_link_status(CYW43_ITF_STA) == CYW43_LINK_UP)
+    {
+      if (is_nil_time(last_assistnow_online_download)) {
+        if (is_nil_time(last_assistnow_online_download_attempt) ||
+          absolute_time_diff_us(last_assistnow_online_download_attempt, get_absolute_time()) > 30*1000*1000) {
+          start_assistnow_online_download();
+          }
+      }
+    }
+  }
+}
+
 void UBLOX_UBX::on_enter_dormant() {
   start_sleep();
 }
 
 void UBLOX_UBX::on_exit_dormant() {
   start_wake();
+}
+
+void UBLOX_UBX::use_assistnow_online(std::string token) {
+  assistnow_online_token = token;
+  assistnow_online_enabled = true;
+}
+
+static void tcp_err_cb_redirect(void *arg, err_t tpcb)
+{
+  static_cast<UBLOX_UBX *>(arg)->tcp_err_handler(tpcb);
+}
+
+static err_t tcp_recv_cb_redirect(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
+{
+  return static_cast<UBLOX_UBX *>(arg)->tcp_recv_handler(tpcb, p, err);
+}
+
+static err_t tcp_send_cb_redirect(void *arg, struct tcp_pcb *tpcb, u16_t len)
+{
+  return static_cast<UBLOX_UBX *>(arg)->tcp_send_handler(tpcb, len);
+}
+
+static err_t connect_cb_redirect(void *arg, struct tcp_pcb *tpcb, err_t err)
+{
+  return static_cast<UBLOX_UBX *>(arg)->connect_handler(tpcb, err);
+}
+
+static void dns_resolved_cb_redirect(const char *name, const ip_addr_t *ipaddr, void *callback_arg)
+{
+  static_cast<UBLOX_UBX *>(callback_arg)->dns_resolved_cb(name, ipaddr);
+}
+void UBLOX_UBX::start_assistnow_online_download() {
+  if (assistnow_connected || assistnow_connecting || assistnow_pcb)
+  {
+    return;
+  }
+  if (cyw43_shim_tcpip_link_status(CYW43_ITF_STA) != CYW43_LINK_UP)
+  {
+    return;
+  }
+  last_assistnow_online_download_attempt = get_absolute_time();
+  ip_addr_t addr;
+  cyw43_arch_lwip_begin();
+  err_t ret = dns_gethostbyname_addrtype(assistnow_online_server.c_str(), &addr, dns_resolved_cb_redirect, this, LWIP_DNS_ADDRTYPE_IPV6_IPV4);
+  cyw43_arch_lwip_end();
+  assistnow_connecting = true;
+  if (ret == ERR_OK) {
+    dns_resolved_cb(assistnow_online_server.c_str(), &addr);
+  }
+  else if (ret == ERR_INPROGRESS)
+  {
+    // Callback should be called once resolved or failed
+  }
+  else {
+    assistnow_connecting = false;
+  }
+}
+
+void UBLOX_UBX::dns_resolved_cb(const char* string, const ip_addr* pAddr) {
+  if (pAddr == nullptr)
+  {
+    printf("AssistNow: failed DNS resolution\r\n");
+    assistnow_connecting = false;
+  }
+  else
+  {
+    cyw43_arch_lwip_begin();
+    assistnow_pcb = tcp_new();
+    tcp_arg(assistnow_pcb, this);
+    tcp_err(assistnow_pcb, tcp_err_cb_redirect);
+    tcp_recv(assistnow_pcb, tcp_recv_cb_redirect);
+    tcp_sent(assistnow_pcb, tcp_send_cb_redirect);
+    auto ret = tcp_connect(assistnow_pcb, pAddr, assistnow_online_port, connect_cb_redirect);
+    printf("AssistNow attempting to connect!\r\n");
+    cyw43_arch_lwip_end();
+    if (ret != ERR_OK)
+    {
+      printf("AssistNow: failed to connect %d\r\n", ret);
+      tcp_close(assistnow_pcb);
+      assistnow_pcb = nullptr;
+      assistnow_connecting = false;
+    }
+  }
+}
+
+err_t UBLOX_UBX::tcp_recv_handler(tcp_pcb* pPcb, pbuf* pPbuf, signed char err) {
+  if (pPbuf == NULL) {
+    if (assistnow_pcb)
+    {
+      tcp_close(assistnow_pcb);
+      assistnow_connecting = false;
+      assistnow_connected = false;
+      assistnow_pcb = nullptr;
+    }
+    printf("Disconnecting...\r\n");
+  } else {
+    printf("AssistNow: Got %d bytes from server!\r\n", pPbuf->len);
+    last_assistnow_online_download = get_absolute_time();
+    /*
+    for (uint32_t i = 0; i < pPbuf->len; i++)
+    {
+      putchar(((char*)pPbuf->payload)[i]);
+    }
+    printf("\r\n");*/
+    tcp_recved(pPcb, pPbuf->len);
+    pbuf_free(pPbuf);
+  }
+  return 0;
+}
+
+err_t UBLOX_UBX::connect_handler(tcp_pcb *pPcb, err_t err) {
+  if (err)
+  {
+    printf("AssistNow connection err: %d", err);
+    assistnow_connecting = false;
+    assistnow_connected = false;
+    return err;
+  }
+  else
+  {
+    printf("AssistNow connected!\r\n");
+    assistnow_connected = true;
+    assistnow_connecting = false;
+    tcp_write(assistnow_pcb, header_data.c_str(), header_data.length(), 0);
+    return ERR_OK;
+  }
+}
+
+void UBLOX_UBX::tcp_err_handler(signed char i) {
+  printf("AssistNow error cb, %d\r\n", i);
+  tcp_close(assistnow_pcb);
+  assistnow_connecting = false;
+  assistnow_pcb = nullptr;
+  assistnow_connected = false;
+}
+
+err_t UBLOX_UBX::tcp_send_handler(struct tcp_pcb *tpcb, u16_t len) {
+  return ERR_OK;
 }
 
 void UBLOX_UBX::start_sleep() {

@@ -12,6 +12,19 @@
 #include <telemetry_manager.hpp>
 
 class UBLOX_UBX {
+  bool assistnow_online_enabled = false;
+  std::string assistnow_online_token;
+  absolute_time_t last_assistnow_online_download = nil_time;
+  absolute_time_t last_assistnow_online_download_attempt = nil_time;
+
+  const std::string assistnow_online_server = "online-live1.services.u-blox.com";
+  const uint32_t assistnow_online_port = 443;
+  std::string header_data;
+
+  struct tcp_pcb *assistnow_pcb = nullptr;
+  bool assistnow_connected = false;
+  bool assistnow_connecting = false;
+
   absolute_time_t last_status_poll = nil_time;
   uart_inst_t * uart_dev;
   uint32_t tx_gpio;
@@ -19,7 +32,7 @@ class UBLOX_UBX {
   uint32_t pps_gpio;
   absolute_time_t last_sleep_command_time = nil_time;
   absolute_time_t last_wake_command_time = nil_time;
-  bool do_power_save = true;
+  bool do_power_save = false;
   bool is_going_to_sleep = false;
   TelemetryManager::Channel longitude_channel{"gps_longitude"};
   TelemetryManager::Channel latitude_channel{"gps_latitude"};
@@ -40,6 +53,8 @@ public:
 
   void update();
 
+  void lwip_update();
+
   void handle_message(uint8_t* data, uint16_t data_len);
   void handle_ubx_message(uint8_t msg_class, uint8_t msg_id, uint8_t* payload, uint16_t payload_len);
 
@@ -48,6 +63,16 @@ public:
 
   void on_enter_dormant();
   void on_exit_dormant();
+
+  void use_assistnow_online(std::string token);
+
+  void start_assistnow_online_download();
+
+  void dns_resolved_cb(const char *string, const ip_addr *pAddr);
+  void tcp_err_handler(signed char i);
+  err_t tcp_recv_handler(tcp_pcb *pPcb, pbuf *pPbuf, signed char err);
+  err_t tcp_send_handler(struct tcp_pcb *tpcb, u16_t len);
+  err_t connect_handler(tcp_pcb *pPcb, err_t i);
 };
 
 #endif //THERMO_SCOPE_UBLOX_G7_HPP

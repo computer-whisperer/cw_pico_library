@@ -57,8 +57,10 @@ void ST7789V2::do_display_callback(_lv_disp_drv_t* disp_drv, const lv_area_t* ar
 
   // Push pixels
   const uint32_t num_pixels = lv_area_get_width(area) * lv_area_get_height(area);
-  const uint32_t num_bytes = sizeof(lv_color_t)*num_pixels;
-  spi_write_blocking(spi_inst, reinterpret_cast<uint8_t *>(color_p), num_bytes);
+  for (uint32_t i = 0; i < num_pixels; i++) {
+    uint16_t data = swap_uint16(color_p[i].full);
+    spi_write_blocking(spi_inst, reinterpret_cast<uint8_t *>(&data), 2);
+  }
   setCS(false);
   lv_disp_flush_ready(disp_drv);
 }

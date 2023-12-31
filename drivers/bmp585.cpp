@@ -25,7 +25,7 @@ void BMP585::initialize_device() {
   this->field_write(FIELD_CMD, 0xB6);
   sleep_ms(4);
 
-  this->field_write(FIELD_PAD_IF_DRV, 0x01);
+  this->field_write(FIELD_PAD_IF_DRV, 0x04);
 
   this->field_write(FIELD_PRESS_EN, 0x01);
   this->set_fifo_mode(true, true);

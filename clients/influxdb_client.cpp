@@ -44,9 +44,9 @@ static void dns_resolved_cb_redirect(const char *name, const ip_addr_t *ipaddr, 
 
 
 InfluxDBClient::InfluxDBClient(const char* bucket_in) {
-  influxdb_url = christian_influx_server_host;
-  influxdb_port = christian_influx_server_port;
-  influxdb_token = christian_influx_server_token;
+  influxdb_url = Secrets::christian_influx_server_host;
+  influxdb_port = Secrets::christian_influx_server_port;
+  influxdb_token = Secrets::christian_influx_server_token;
   bucket = bucket_in;
   header_data = "POST /api/v2/write?org=Kalogon&bucket=" + bucket + " "
                 "HTTP/1.1\r\n"
