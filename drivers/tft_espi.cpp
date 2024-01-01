@@ -72,9 +72,9 @@ TFT_ESPI::TFT_ESPI(spi_inst_t * spi_inst_in, int32_t cs_gpio_in, int32_t dc_gpio
   gpio_init(rst_gpio);
   gpio_set_dir(rst_gpio, GPIO_OUT);
   gpio_put(rst_gpio, true);
-  gpio_init(bl_gpio);
-  gpio_set_dir(bl_gpio, GPIO_OUT);
-  gpio_put(bl_gpio, true);
+  //gpio_init(bl_gpio);
+  //gpio_set_dir(bl_gpio, GPIO_OUT);
+  //gpio_put(bl_gpio, true);
 
   // Do reset
   gpio_put(rst_gpio, true);
@@ -87,7 +87,7 @@ TFT_ESPI::TFT_ESPI(spi_inst_t * spi_inst_in, int32_t cs_gpio_in, int32_t dc_gpio
   _init_height = height;
   _init_width = width;
 
-  /*
+
   // LCD BackLight PWM control
   gpio_set_function(bl_gpio, GPIO_FUNC_PWM);
   bl_pwm_slice_num = pwm_gpio_to_slice_num(bl_gpio);
@@ -99,9 +99,9 @@ TFT_ESPI::TFT_ESPI(spi_inst_t * spi_inst_in, int32_t cs_gpio_in, int32_t dc_gpio
   // Load the configuration into our PWM slice, and set it running.
   pwm_init(bl_pwm_slice_num, &config, true);
 
-  pwm_set_wrap(bl_pwm_slice_num, 8);
+  pwm_set_wrap(bl_pwm_slice_num, 100);
   pwm_set_enabled(bl_pwm_slice_num, true);
-  pwm_set_chan_level(bl_pwm_slice_num, pwm_gpio_to_channel(bl_gpio), 100 * 20);*/
+  pwm_set_chan_level(bl_pwm_slice_num, pwm_gpio_to_channel(bl_gpio), 50);
 }
 
 static void hacky_flush_cb (struct _lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_color_t * color_p) {

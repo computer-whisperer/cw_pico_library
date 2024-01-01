@@ -18,6 +18,7 @@ class TelemetryManager
   bool enable_influxdb = false;
   InfluxDBClient *influxdb_client = nullptr;
   std::string influxdb_measurement_heading;
+  std::string influxdb_tags;
 
   struct DataPoint {
     const char* field_name;
@@ -52,6 +53,7 @@ public:
   };
   TelemetryManager();
   void use_influxdb(InfluxDBClient *influxdb_client_in, const std::string& measurement_heading);
+  void update_tags(std::string tags);
 
   void push_data_to_influxdb();
 };

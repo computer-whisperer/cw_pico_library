@@ -56,49 +56,58 @@ void TimeManager::new_ntp_time(const uint64_t ntp_unix_time_us, const absolute_t
   ntp_timestamp_offset_us = ntp_unix_time_us - to_us_since_boot(local_time);
 }
 
-void TimeManager::new_gps_time(uint64_t gps_unix_time_us, absolute_time_t local_time) {
-  if ((gps_unix_time_us - last_gps_time_point_us) > 60LL*1000000LL) {
-    recent_time_points.clear();
-    if (recent_time_updates != 0)
-    {
-      time_error_since_last_sync_us = (int64_t)convert_to_unix_time_us(local_time) - (int64_t)gps_unix_time_us;
+void TimeManager::new_gps_time(uint64_t gps_unix_time_us, absolute_time_t local_time, uint32_t time_accuracy_ns) {
+  if (time_accuracy_ns > 500000000) {
+    // Too coarse of a fix, ignore.
+  }
+  else if (time_accuracy_ns > 1000000) {
+    // Coarse fix, only set offset
+    gps_timestamp_offset_us = (gps_unix_time_us - apply_rate_compensation(local_time));
+  }
+  else {
+    // Fine fix, try to calibrate local clock
+    if ((gps_unix_time_us - last_gps_time_point_us) > 60LL*1000000LL) {
+      recent_time_points.clear();
+      if (recent_time_updates != 0)
+      {
+        time_error_since_last_sync_us = (int64_t)convert_to_unix_time_us(local_time) - (int64_t)gps_unix_time_us;
+      }
+
+      recent_time_updates = 0;
+    }
+    struct time_point_t new_time_point = {gps_unix_time_us, local_time};
+    recent_time_points.push(new_time_point);
+
+    if (recent_time_points.get_num_entries() > 5) {
+      // Get approximation of derivative
+      struct time_point_t oldest_time_point = recent_time_points.get_value_by_age((int32_t) recent_time_points.get_num_entries() - 1);
+      struct time_point_t newest_time_point = recent_time_points.get_value_by_age(0);
+      uint64_t gps_time_elapsed_us = newest_time_point.gps_time_us - oldest_time_point.gps_time_us;
+      uint64_t local_time_elapsed_us = absolute_time_diff_us(oldest_time_point.local_time, newest_time_point.local_time);
+      float current_clock_correction = (float) (gps_time_elapsed_us - local_time_elapsed_us) / (float) local_time_elapsed_us;
+      if (current_clock_correction == 0)
+      {
+        local_clock_correction = current_clock_correction;
+        printf("New GPS time fix: %llu\r\n", gps_unix_time_us);
+      }
+      else
+      {
+        local_clock_correction += (current_clock_correction - local_clock_correction)/6;
+      }
+
+
+      recent_time_updates++;
     }
 
-    recent_time_updates = 0;
-  }
-
-
-  struct time_point_t new_time_point = {gps_unix_time_us, local_time};
-  recent_time_points.push(new_time_point);
-
-  if (recent_time_points.get_num_entries() > 5) {
-    // Get approximation of derivative
-    struct time_point_t oldest_time_point = recent_time_points.get_value_by_age((int32_t) recent_time_points.get_num_entries() - 1);
-    struct time_point_t newest_time_point = recent_time_points.get_value_by_age(0);
-    uint64_t gps_time_elapsed_us = newest_time_point.gps_time_us - oldest_time_point.gps_time_us;
-    uint64_t local_time_elapsed_us = absolute_time_diff_us(oldest_time_point.local_time, newest_time_point.local_time);
-    float current_clock_correction = (float) (gps_time_elapsed_us - local_time_elapsed_us) / (float) local_time_elapsed_us;
-    if (current_clock_correction == 0)
-    {
-      local_clock_correction = current_clock_correction;
-      printf("New GPS time fix: %llu\r\n", gps_unix_time_us);
-    }
-    else
-    {
-      local_clock_correction += (current_clock_correction - local_clock_correction)/6;
+    if (recent_time_updates >= 20) {
+      most_recent_gps_time_sync = get_absolute_time();
     }
 
+    last_gps_time_point_us = gps_unix_time_us;
 
-    recent_time_updates++;
+    gps_timestamp_offset_us = (gps_unix_time_us - apply_rate_compensation(local_time));
   }
 
-  if (recent_time_updates >= 20) {
-    most_recent_gps_time_sync = get_absolute_time();
-  }
-
-  last_gps_time_point_us = gps_unix_time_us;
-
-  gps_timestamp_offset_us = (gps_unix_time_us - apply_rate_compensation(local_time));
 }
 
 absolute_time_t TimeManager::get_time_of_most_recent_full_gps_fix() {

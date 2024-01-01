@@ -9,6 +9,7 @@
 #include <cyw43.h>
 #include <cyw43_shim.h>
 #include <time_manager.hpp>
+#include <utility>
 #include <lwip/dns.h>
 #include <lwip/tcp.h>
 #include <pico/cyw43_arch.h>
@@ -97,10 +98,6 @@ UBLOX_UBX::UBLOX_UBX(uart_inst_t *uart_dev_in, uint32_t tx_gpio_in, uint32_t rx_
   uart_set_irq_enables(uart_dev, true, false);
 
   critical_section_init(&critical_section);
-
-  header_data = "GET /GetOnlineData.ashx?token=" + assistnow_online_token +
-              "HTTP/1.1\r\n"
-              "Host: " + assistnow_online_server + "\r\n";
 }
 
 #define UBX_CLASS_NAV 0x01
@@ -117,6 +114,36 @@ UBLOX_UBX::UBLOX_UBX(uart_inst_t *uart_dev_in, uint32_t tx_gpio_in, uint32_t rx_
 #define UBX_CLASS_LOG 0x21
 #define UBX_CLASS_SEC 0x27
 
+#define UBX_AID_ALM 0x30
+#define UBX_AID_ALPSRV 0x32
+#define UBX_AID_ALP 0x50
+#define UBX_AID_AOP 0x33
+#define UBX_AID_DATA 0x10
+#define UBX_AID_EPH 0x31
+#define UBX_AID_HUI 0x02
+#define UBX_AID_INI 0x01
+#define UBX_AID_REQ 0x00
+
+#define UBX_CFG_ANT 0x13
+#define UBX_CFG_CFG 0x09
+#define UBX_CFG_DAT 0x06
+#define UBX_CFG_GNSS 0x3E
+#define UBX_CFG_INF 0x02
+#define UBX_CFG_ITFM 0x39
+#define UBX_CFG_LOGFILTER 0x47
+#define UBX_CFG_MSG 0x01
+#define UBX_CFG_NAV5 0x24
+#define UBX_CFG_NAVX5 0x23
+#define UBX_CFG_NMEA 0x17
+#define UBX_CFG_PM2 0x3B
+#define UBX_CFG_PRT 0x00
+#define UBX_CFG_RATE 0x08
+#define UBX_CFG_RST 0x04
+#define UBX_CFG_RXM 0x11
+#define UBX_CFG_SBAS 0x16
+#define UBX_CFG_TP5 0x31
+#define UBX_CFG_USB 0x1B
+
 #define UBX_NAV_AOPSTATUS 0x60
 #define UBX_NAV_CLOCK 0x22
 #define UBX_NAV_DGPS 0x31
@@ -132,25 +159,12 @@ UBLOX_UBX::UBLOX_UBX(uart_inst_t *uart_dev_in, uint32_t tx_gpio_in, uint32_t rx_
 #define UBX_NAV_VELECEF 0x11
 #define UBX_NAV_VELNED 0x12
 
-#define UBX_CFG_PRT 0x00
-#define UBX_CFG_PM2 0x3B
-#define UBX_CFG_PMS 0x86
-#define UBX_CFG_RXM 0x11
-#define UBX_CFG_TP5 0x31
-#define UBX_CFG_MSG 0x01
 #define UBX_TIM_TP 0x01
-#define UBX_CFG_GNSS 0x3E
-#define UBX_CFG_CFG 0x09
 
-#define UBX_AID_ALM 0x30
-#define UBX_AID_ALPSRV 0x32
-#define UBX_AID_ALP 0x50
-#define UBX_AID_AOP 0x33
-#define UBX_AID_DATA 0x10
-#define UBX_AID_EPH 0x31
-#define UBX_AID_HUI 0x02
-#define UBX_AID_INI 0x01
-#define UBX_AID_REQ 0x00
+#define UBX_ACK_ACK 0x01
+#define UBX_ACK_NAK 0x00
+
+
 
 
 void UBLOX_UBX::initialize_device() {
@@ -177,6 +191,25 @@ void UBLOX_UBX::initialize_device() {
     uart_set_baudrate(uart_dev, 115200);
     clear_message_buffer();
 
+    // Configure navigation settings
+    memset(payload, 0, sizeof(payload));
+    *reinterpret_cast<uint16_t *>(&payload[0]) = 0x00F7; // mask
+    *reinterpret_cast<uint8_t *>(&payload[2]) = 0; // dynModel
+    *reinterpret_cast<uint8_t *>(&payload[3]) = 3; // fixMode
+    *reinterpret_cast<int32_t *>(&payload[4]) = 0; // fixedAlt
+    *reinterpret_cast<uint32_t *>(&payload[8]) = 0; // fixedAltVar
+    *reinterpret_cast<int8_t *>(&payload[12]) = 5; // minElev
+    *reinterpret_cast<uint8_t *>(&payload[13]) = 0; // drLimit
+    *reinterpret_cast<uint16_t *>(&payload[14]) = 25; // pDop
+    *reinterpret_cast<uint16_t *>(&payload[16]) = 25; // tDop
+    *reinterpret_cast<uint16_t *>(&payload[18]) = 100; // pAcc
+    *reinterpret_cast<uint16_t *>(&payload[20]) = 300; // tAcc
+    *reinterpret_cast<uint8_t *>(&payload[22]) = 0; // staticHoldThresh
+    *reinterpret_cast<uint8_t *>(&payload[23]) = 60; // dgpsTimeOut
+    *reinterpret_cast<uint8_t *>(&payload[24]) = 0; // cnoThreshNumSVs
+    *reinterpret_cast<uint8_t *>(&payload[25]) = 0; // cnoThresh
+    send_ubx(UBX_CLASS_CFG, UBX_CFG_NAV5, payload, 36);
+
     // Configure TP messages
     memset(payload, 0, sizeof(payload));
     payload[0] = 0; // TP0
@@ -184,7 +217,7 @@ void UBLOX_UBX::initialize_device() {
     *((uint16_t*)&payload[6]) = 0; // rfGroupDelay
     *((uint32_t*)&payload[8]) = 1000000; // freqPeriod;
     *((uint32_t*)&payload[12]) = 1000000; // freqPeriodLock;
-    *((uint32_t*)&payload[16]) = 0; // pulseLenRatio;
+    *((uint32_t*)&payload[16]) = 100000; // pulseLenRatio;
     *((uint32_t*)&payload[20]) = 100000; // pulseLenRatioLock;
     *((int32_t*)&payload[24]) = 0; // userConfigDelay;
     *((uint32_t*)&payload[28]) = 0x00000077; // flags;
@@ -193,12 +226,12 @@ void UBLOX_UBX::initialize_device() {
     // Send sleep config/command
     memset(payload, 0, sizeof(payload));
     payload[0] = 0x01; // Version
-    *((uint32_t*)&payload[4]) = 0x00029000; // PSM config flags
+    *((uint32_t*)&payload[4]) = 0x00031C00; // PSM config flags (cyclic mode, doNotEnterOff, updateRTC, updateEPH, waitTimeFix)
     *((uint32_t*)&payload[8]) = 1000; // Update period
     *((uint32_t*)&payload[12]) = 10000; // Search period
     *((uint32_t*)&payload[16]) = 0; // gridOffset
-    *((uint16_t*)&payload[20]) = 0; // onTime
-    *((uint16_t*)&payload[22]) = 0; // minAcqTime
+    *((uint16_t*)&payload[20]) = 200; // onTime
+    *((uint16_t*)&payload[22]) = 60; // minAcqTime
     send_ubx(UBX_CLASS_CFG, UBX_CFG_PM2, payload, 44);
 
     // Enable TIM-TP
@@ -208,12 +241,18 @@ void UBLOX_UBX::initialize_device() {
     payload[3] = 1; // Set rate to 1 on port 1
     send_ubx(UBX_CLASS_CFG, UBX_CFG_MSG, payload, 8);
 
-    // Enable POSLLH
+    // Enable PVT
     memset(payload, 0, sizeof(payload));
     payload[0] = UBX_CLASS_NAV;
-    payload[1] = UBX_NAV_POSLLH;
+    payload[1] = UBX_NAV_PVT;
     payload[3] = 1; // Set rate to 1 on port 1
     send_ubx(UBX_CLASS_CFG, UBX_CFG_MSG, payload, 8);
+
+    // Enter full power mode
+    memset(payload, 0, sizeof(payload));
+    payload[0] = 0x08; // Always set for some reason
+    payload[1] = 0x00; // Continuous mode
+    send_ubx(UBX_CLASS_CFG, UBX_CFG_RXM, payload, 2);
 
     // Save settings
     //memset(payload, 0, sizeof(payload));
@@ -289,12 +328,20 @@ void UBLOX_UBX::handle_ubx_message(uint8_t msg_class, uint8_t msg_id, uint8_t *p
   switch (msg_class) {
     case UBX_CLASS_ACK:
       switch (msg_id) {
-        default:
+        case UBX_ACK_ACK:
           handled = true;
+          break;
+        case UBX_ACK_NAK: {
+          uint32_t clsid = *reinterpret_cast<uint32_t *>(aligned_buf + 0);
+          uint32_t msgid = *reinterpret_cast<uint32_t *>(aligned_buf + 4);
+          printf("UBX NAK! 0x%x, 0x%x\r\n", clsid, msgid);
+          handled = true;
+          break;
+        }
+        default:
           break;
       }
       break;
-    case UBX_CLASS_CFG:
     case UBX_CLASS_TIM:
       if (msg_id == UBX_TIM_TP)
       {
@@ -367,42 +414,91 @@ void UBLOX_UBX::handle_ubx_message(uint8_t msg_class, uint8_t msg_id, uint8_t *p
           auto numCh = *(uint8_t*)(aligned_buf + 4);
           auto globalFlags = *(uint8_t*)(aligned_buf + 5);
           printf("Have %d sv.\r\n", numCh);
+          num_sv_channel.new_data(numCh);
           if (payload_len < 8 + numCh*12) {
             break;
           }
           for (uint32_t i = 0; i < numCh; i++) {
             uint8_t* channel_start = aligned_buf + 8 + i*12;
-            auto chn = *(uint8_t*)(aligned_buf + 0);
-            auto svid = *(uint8_t*)(aligned_buf + 1);
-            auto flags = *(uint8_t*)(aligned_buf + 2);
-            auto quality = *(uint8_t*)(aligned_buf + 3);
-            auto cno = *(uint8_t*)(aligned_buf + 4);
-            auto elev = *(int8_t*)(aligned_buf + 5);
-            auto azim = *(int16_t*)(aligned_buf + 6);
-            auto prRes = *(int32_t*)(aligned_buf + 8);
-            printf("SV: id:%d, flags:%d, qual:%d, cno:%d\r\n", svid, flags, quality, cno);
+            auto chn = *(uint8_t*)(channel_start + 0);
+            auto svid = *(uint8_t*)(channel_start + 1);
+            auto flags = *(uint8_t*)(channel_start + 2);
+            auto quality = *(uint8_t*)(channel_start + 3);
+            auto cno = *(uint8_t*)(channel_start + 4);
+            auto elev = *reinterpret_cast<int8_t *>(channel_start + 5);
+            auto azim = *reinterpret_cast<int16_t *>(channel_start + 6);
+            auto prRes = *reinterpret_cast<int32_t *>(channel_start + 8);
+            printf("UBX SV: id:%d, flags:0x%x, qual:0x%x, cno:%d\r\n", svid, flags, quality, cno);
           }
+          handled = true;
           break;
         }
         case UBX_NAV_POSLLH: {
           if (payload_len < 28) {
             break;
           }
-          auto iTOW = *(uint32_t*)(aligned_buf);
-          auto lon = *(int32_t*)(aligned_buf + 4);
-          auto lat = *(int32_t*)(aligned_buf + 8);
-          auto height = *(int32_t*)(aligned_buf + 12);
-          auto hMSL = *(int32_t*)(aligned_buf + 16);
-          auto hAcc = *(uint32_t*)(aligned_buf + 20);
-          auto vAcc = *(uint32_t*)(aligned_buf + 20);
-          float f_lat = static_cast<float>(lat) / 10000000.0f;
-          float f_lon = static_cast<float>(lon) / 10000000.0f;
-          float h_acc_m = static_cast<float>(hAcc)/1000;
-          float v_acc_m = static_cast<float>(vAcc)/1000;
-          printf("POSLLH: Lat: %f, Lon: %f, Height: %d, VAcc: %f, HAcc: %f\r\n", f_lat, f_lon, height, h_acc_m, v_acc_m);
+          const auto iTOW = *reinterpret_cast<uint32_t *>(aligned_buf);
+          const auto lon = *reinterpret_cast<int32_t *>(aligned_buf + 4);
+          const auto lat = *reinterpret_cast<int32_t *>(aligned_buf + 8);
+          const auto height = *reinterpret_cast<int32_t *>(aligned_buf + 12);
+          const auto hMSL = *reinterpret_cast<int32_t *>(aligned_buf + 16);
+          const auto hAcc = *reinterpret_cast<uint32_t *>(aligned_buf + 20);
+          const auto vAcc = *reinterpret_cast<uint32_t *>(aligned_buf + 20);
+          const float f_lat = static_cast<float>(lat) / 10000000.0f;
+          const float f_lon = static_cast<float>(lon) / 10000000.0f;
+          const float h_acc_m = static_cast<float>(hAcc)/1000;
+          const float v_acc_m = static_cast<float>(vAcc)/1000;
+          printf("UBX POSLLH: Lat: %f, Lon: %f, Height: %d, VAcc: %f, HAcc: %f\r\n", f_lat, f_lon, height, h_acc_m, v_acc_m);
+
+          handled = true;
+          break;
+        }
+        case UBX_NAV_PVT: {
+          if (payload_len < 84) {
+            break;
+          }
+          const auto iTOW = *reinterpret_cast<uint32_t *>(aligned_buf);
+          const auto year = *reinterpret_cast<uint16_t *>(aligned_buf + 4);
+          const auto month = *reinterpret_cast<uint8_t *>(aligned_buf + 6);
+          const auto day = *reinterpret_cast<uint8_t *>(aligned_buf + 7);
+          const auto hour = *reinterpret_cast<uint8_t *>(aligned_buf + 8);
+          const auto minute = *reinterpret_cast<uint8_t *>(aligned_buf + 9);
+          const auto second = *reinterpret_cast<uint8_t *>(aligned_buf + 10);
+          const auto valid = *reinterpret_cast<uint8_t *>(aligned_buf + 11);
+          const auto tAcc = *reinterpret_cast<uint32_t *>(aligned_buf + 12);
+          const auto nano = *reinterpret_cast<uint32_t *>(aligned_buf + 16);
+          const auto fixType = *reinterpret_cast<uint8_t *>(aligned_buf + 20);
+          const auto flags = *reinterpret_cast<uint8_t *>(aligned_buf + 21);
+          const auto numSV = *reinterpret_cast<uint8_t *>(aligned_buf + 23);
+          const auto lon = *reinterpret_cast<int32_t *>(aligned_buf + 24);
+          const auto lat = *reinterpret_cast<int32_t *>(aligned_buf + 28);
+          const auto height = *reinterpret_cast<int32_t *>(aligned_buf + 32);
+          const auto hMSL = *reinterpret_cast<int32_t *>(aligned_buf + 36);
+          const auto hAcc = *reinterpret_cast<uint32_t *>(aligned_buf + 40);
+          const auto vAcc = *reinterpret_cast<uint32_t *>(aligned_buf + 44);
+          const auto velN = *reinterpret_cast<int32_t *>(aligned_buf + 48);
+          const auto velE = *reinterpret_cast<int32_t *>(aligned_buf + 52);
+          const auto velD = *reinterpret_cast<int32_t *>(aligned_buf + 56);
+          const auto gSpeed = *reinterpret_cast<int32_t *>(aligned_buf + 60);
+          const auto headMot = *reinterpret_cast<int32_t *>(aligned_buf + 64);
+          const auto sAcc = *reinterpret_cast<uint32_t *>(aligned_buf + 68);
+          const auto headingAcc = *reinterpret_cast<uint32_t *>(aligned_buf + 72);
+          const auto pDOP = *reinterpret_cast<uint32_t *>(aligned_buf + 76);
+          printf("UBX PVT: valid: 0x%x, fixType: 0x%x, tAcc %u, numSV: %u, flags: %x\r\n", valid, fixType, tAcc, numSV, flags);
+          const float f_lat = static_cast<float>(lat) / 10000000.0f;
+          const float f_lon = static_cast<float>(lon) / 10000000.0f;
+          const float h_acc_m = static_cast<float>(hAcc)/1000;
+          const float v_acc_m = static_cast<float>(vAcc)/1000;
+          valid_channel.new_data(valid);
+          flags_channel.new_data(flags);
           longitude_channel.new_data(f_lon);
           latitude_channel.new_data(f_lat);
           h_acc_channel.new_data(h_acc_m);
+          v_acc_channel.new_data(v_acc_m);
+          altitude_channel.new_data(hMSL);
+          fix_num_sv_channel.new_data(numSV);
+          t_acc_channel.new_data(static_cast<float>(tAcc)/1000000000.0);
+          last_time_accuracy_ns = tAcc;
           handled = true;
           break;
         }
@@ -475,7 +571,7 @@ void UBLOX_UBX::update() {
     if (!is_going_to_sleep && absolute_time_diff_us(pps_timestamp, get_absolute_time()) < 100*1000)
     {
       // New time sync!
-      TimeManager::new_gps_time(most_recent_timestamp_seen, pps_timestamp);
+      TimeManager::new_gps_time(most_recent_timestamp_seen, pps_timestamp, last_time_accuracy_ns);
     }
   }
 
@@ -486,6 +582,14 @@ void UBLOX_UBX::update() {
     send_ubx(UBX_CLASS_NAV, UBX_NAV_SVINFO, payload, 0);
     //send_ubx(UBX_CLASS_AID, UBX_AID_EPH, payload, 0);
     //send_ubx(UBX_CLASS_AID, UBX_AID_ALM, payload, 0);
+  }
+
+  if (latest_assistnow_data_ready) {
+    auto start_time = get_absolute_time();
+    uart_write_blocking(uart_dev, latest_assistnow_data, latest_assistnow_data_len);
+    auto end_time = get_absolute_time();
+    printf("Wrote %d bytes of assistnow data to gps in %lld us.\r\n", latest_assistnow_data_len, absolute_time_diff_us(start_time, end_time));
+    latest_assistnow_data_ready = false;
   }
 
   // Check if it's time to sleep
@@ -514,7 +618,7 @@ void UBLOX_UBX::lwip_update() {
     {
       if (is_nil_time(last_assistnow_online_download)) {
         if (is_nil_time(last_assistnow_online_download_attempt) ||
-          absolute_time_diff_us(last_assistnow_online_download_attempt, get_absolute_time()) > 30*1000*1000) {
+          absolute_time_diff_us(last_assistnow_online_download_attempt, get_absolute_time()) > 5*1000*1000) {
           start_assistnow_online_download();
           }
       }
@@ -531,7 +635,7 @@ void UBLOX_UBX::on_exit_dormant() {
 }
 
 void UBLOX_UBX::use_assistnow_online(std::string token) {
-  assistnow_online_token = token;
+  assistnow_online_token = std::move(token);
   assistnow_online_enabled = true;
 }
 
@@ -622,16 +726,51 @@ err_t UBLOX_UBX::tcp_recv_handler(tcp_pcb* pPcb, pbuf* pPbuf, signed char err) {
       assistnow_connected = false;
       assistnow_pcb = nullptr;
     }
-    printf("Disconnecting...\r\n");
+    printf("AssistNow: Disconnecting...\r\n");
   } else {
     printf("AssistNow: Got %d bytes from server!\r\n", pPbuf->len);
     last_assistnow_online_download = get_absolute_time();
-    /*
-    for (uint32_t i = 0; i < pPbuf->len; i++)
-    {
-      putchar(((char*)pPbuf->payload)[i]);
+    uint32_t data_start_offset = 0;
+    if (assistnow_awaiting_content_bytes == 0) {
+      // Parse through data for content length header
+      const char * filter = "Content-Length: ";
+      uint32_t bytes_needed = strlen(filter) + 5;
+      for (uint32_t i = 0; i < pPbuf->len-bytes_needed; i++) {
+        if (strncmp(static_cast<char *>(pPbuf->payload) + i, filter, strlen(filter)) == 0) {
+          assistnow_awaiting_content_bytes = strtol(static_cast<char *>(pPbuf->payload) + i + strlen(filter), nullptr, 10);
+          break;
+        }
+      }
+      // Find start of data
+      filter = "\r\n\r\n";
+      bytes_needed = strlen(filter) + 5;
+      for (uint32_t i = 0; i < pPbuf->len-bytes_needed; i++) {
+        if (strncmp(static_cast<char *>(pPbuf->payload) + i, filter, strlen(filter)) == 0) {
+          data_start_offset = i + sizeof(filter);
+          break;
+        }
+      }
+      // Start data logging
+      latest_assistnow_data_ready = false;
+      if (latest_assistnow_data) {
+        free(latest_assistnow_data);
+        latest_assistnow_data = nullptr;
+      }
+      latest_assistnow_data = static_cast<uint8_t *>(malloc(assistnow_awaiting_content_bytes));
+      latest_assistnow_data_len = 0;
     }
-    printf("\r\n");*/
+
+    if (assistnow_awaiting_content_bytes > 0) {
+      const uint32_t data_to_copy = std::min(assistnow_awaiting_content_bytes, static_cast<uint32_t>(pPbuf->len) - data_start_offset);
+      memcpy(latest_assistnow_data + latest_assistnow_data_len, static_cast<uint8_t *>(pPbuf->payload)+data_start_offset, data_to_copy);
+      latest_assistnow_data_len += data_to_copy;
+      assistnow_awaiting_content_bytes -= data_to_copy;
+      if (assistnow_awaiting_content_bytes == 0) {
+        latest_assistnow_data_ready = true;
+        printf("Finished AssistNow data download!\r\n");
+      }
+    }
+
     tcp_recved(pPcb, pPbuf->len);
     pbuf_free(pPbuf);
   }
@@ -651,7 +790,12 @@ err_t UBLOX_UBX::connect_handler(tcp_pcb *pPcb, err_t err) {
     printf("AssistNow connected!\r\n");
     assistnow_connected = true;
     assistnow_connecting = false;
+    std::string header_data = "GET /GetOnlineData.ashx?gnss=gps;datatype=eph,alm,aux;format=aid;token=" + assistnow_online_token + "; "
+              "HTTP/1.1\r\n"
+              "Host: " + assistnow_online_server + "\r\n"
+              "Accept: */* \r\n\r\n";
     tcp_write(assistnow_pcb, header_data.c_str(), header_data.length(), 0);
+    tcp_output(assistnow_pcb);
     return ERR_OK;
   }
 }

@@ -71,13 +71,17 @@ void TelemetryManager::use_influxdb(InfluxDBClient* influxdb_client_in, const st
   enable_influxdb = true;
 }
 
+void TelemetryManager::update_tags(std::string tags) {
+  influxdb_tags = std::move(tags);
+}
+
 void TelemetryManager::push_data_to_influxdb() {
   DataPoint new_point{};
   while (queue_try_remove(&intercore_influxdb_data_queue, &new_point))
   {
     if (TimeManager::has_epoch() != 0)
     {
-      influxdb_client->push_double(influxdb_measurement_heading.c_str(), "", new_point.field_name, new_point.value,
+      influxdb_client->push_double(influxdb_measurement_heading.c_str(), influxdb_tags.c_str(), new_point.field_name, new_point.value,
                                  TimeManager::convert_to_unix_time_us(new_point.timestamp));
     }
   }
