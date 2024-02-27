@@ -54,7 +54,11 @@ class InfluxDBClient {
 
   const char * current_measurement;
   uint64_t current_timestamp_us = 0;
-  InfluxDBClient(const char* bucket_in);
+  InfluxDBClient(
+          std::string bucket_in,
+          std::string influxdb_url_in,
+          uint32_t influxdb_port_in,
+          std::string influxdb_token_in);
   void try_connect();
   void start_measurement(const char* measurement, const char * tags, uint64_t timestamp_us);
   void end_measurement();

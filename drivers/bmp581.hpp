@@ -5,6 +5,7 @@
 #ifndef THERMO_SCOPE_BMP581_HPP
 #define THERMO_SCOPE_BMP581_HPP
 #include "i2c_bus_manager.hpp"
+#include "telemetry_manager.hpp"
 
 /*!
  * This is a helper class for managing bmp581 register manipulation
@@ -52,6 +53,9 @@ class BMP581: public I2CPeripheralDriver {
   uint32_t sample_period_us = 0;
 
   absolute_time_t last_fetch_timestamp = nil_time;
+
+  TelemetryManager::Channel temp_channel{"bmp585_temp", "c"};
+  TelemetryManager::Channel press_channel{"bmp585_press", "kpa"};
 public:
 
   static constexpr uint8_t REG_CMD = 0x7E;

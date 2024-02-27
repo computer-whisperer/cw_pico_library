@@ -6,6 +6,7 @@
 #include "influxdb_client.hpp"
 
 #include <secrets.hpp>
+#include <utility>
 
 #include "lwip/ip_addr.h"
 #include "lwip/dns.h"
@@ -43,11 +44,15 @@ static void dns_resolved_cb_redirect(const char *name, const ip_addr_t *ipaddr, 
 }
 
 
-InfluxDBClient::InfluxDBClient(const char* bucket_in) {
-  influxdb_url = Secrets::christian_influx_server_host;
-  influxdb_port = Secrets::christian_influx_server_port;
-  influxdb_token = Secrets::christian_influx_server_token;
-  bucket = bucket_in;
+InfluxDBClient::InfluxDBClient(
+        std::string bucket_in,
+        std::string influxdb_url_in,
+        uint32_t influxdb_port_in,
+        std::string influxdb_token_in) :
+        influxdb_url(std::move(influxdb_url_in)),
+        influxdb_token(std::move(influxdb_token_in)),
+        influxdb_port(influxdb_port_in),
+        bucket(std::move(bucket_in)){
   header_data = "POST /api/v2/write?org=Kalogon&bucket=" + bucket + " "
                 "HTTP/1.1\r\n"
                 "Connection: keep-alive\r\n"

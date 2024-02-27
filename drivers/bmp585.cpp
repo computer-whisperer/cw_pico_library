@@ -25,7 +25,7 @@ void BMP585::initialize_device() {
   this->field_write(FIELD_CMD, 0xB6);
   sleep_ms(4);
 
-  this->field_write(FIELD_PAD_IF_DRV, 0x01);
+  this->field_write(FIELD_PAD_IF_DRV, 0x00);
 
   this->field_write(FIELD_PRESS_EN, 0x01);
   this->set_fifo_mode(true, true);
@@ -54,16 +54,16 @@ void BMP585::register_write(uint8_t addr, uint8_t value) {
   buf[1] = value;
   //i2c_write_blocking(i2c_bus, i2c_addr, buf, 2, false);
   //i2c_write_blocking_until(i2c_bus, i2c_addr, buf, 2, false, delayed_by_us(get_absolute_time(), 8000));
-  i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, buf, 2, false, 100);
+  i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, buf, 2, false, 1000);
 }
 
 uint8_t BMP585::register_read(uint8_t addr) {
   //i2c_write_blocking(i2c_bus, i2c_addr, &addr, 1, true);
-  i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &addr, 1, true, 100);
+  i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &addr, 1, true, 1000);
   //i2c_write_blocking_until(i2c_bus, i2c_addr, &addr, 1, true, delayed_by_us(get_absolute_time(), 8000));
   uint8_t data = 0;
   //i2c_read_blocking(i2c_bus, i2c_addr, &data, 1, false);
-  i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, &data, 1, false, 100);
+  i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, &data, 1, false, 1000);
   //i2c_read_blocking_until(i2c_bus, i2c_addr, &data, 1, false, delayed_by_us(get_absolute_time(), 8000));
   return data;
 }
@@ -204,11 +204,12 @@ void BMP585::pull_from_fifo() {
     assert(bytes_to_read <= sizeof(read_buffer));
     uint8_t addr_value = BMP585::REG_FIFO_DATA;
 
-    i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &addr_value, 1, true, 100);
-    i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, read_buffer, bytes_to_read, false, 100);
+    i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &addr_value, 1, true, 1000);
+    i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, read_buffer, bytes_to_read, false, 1000);
 
-    uint64_t temp_data_timestamp = to_us_since_boot(get_absolute_time());
-    uint64_t press_data_timestamp = to_us_since_boot(get_absolute_time());
+    uint64_t buffer_time = (available_samples/2)*sample_period_us;
+    uint64_t temp_data_timestamp = to_us_since_boot(get_absolute_time()) - buffer_time;
+    uint64_t press_data_timestamp = to_us_since_boot(get_absolute_time()) - buffer_time;
 
     uint8_t *read_ptr = read_buffer;
     for (uint8_t i = 0; i < available_samples; i++) {
@@ -223,16 +224,16 @@ void BMP585::pull_from_fifo() {
           float value = process_temperature_data_C(read_ptr[2], read_ptr[1], read_ptr[0]);
           temp_channel.new_data(value, from_us_since_boot(temp_data_timestamp));
         }
-        temp_data_timestamp -= sample_period_us;
+        temp_data_timestamp += sample_period_us;
         read_ptr += 3;
       }
       if (press_in_fifo) {
         if (read_ptr[2] | read_ptr[1] | read_ptr[0]) {
           float value = process_pressure_data_kPa(read_ptr[2], read_ptr[1], read_ptr[0]);
-          press_channel.new_data(value, from_us_since_boot(temp_data_timestamp));
+          press_channel.new_data(value, from_us_since_boot(press_data_timestamp));
           TelemetryManager::set_best_pressure_kpa(value);
         }
-        press_data_timestamp -= sample_period_us;
+        press_data_timestamp += sample_period_us;
         read_ptr += 3;
       }
     }

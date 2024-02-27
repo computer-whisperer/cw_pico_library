@@ -12,10 +12,10 @@ TSYS01::TSYS01(i2c_inst_t* i2c_bus_in, bool addr_select_in) :
 void TSYS01::do_normal_sample() {
   // Read ADC
   uint8_t command = 0x00;
-  auto ret = i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &command, 1, false, 100);
+  auto ret = i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &command, 1, false, 1000);
 
   uint8_t rx_bytes[3];
-  ret = i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, rx_bytes, 3, false, 100);
+  ret = i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, rx_bytes, 3, false, 1000);
   if (rx_bytes[0] || rx_bytes[1] || rx_bytes[2]) {
     double raw_value = static_cast<double>(rx_bytes[2])/256 + static_cast<double>(rx_bytes[1]) + static_cast<double>(rx_bytes[0]*256);
     double raw_power = raw_value;
@@ -33,7 +33,7 @@ void TSYS01::do_normal_sample() {
 
   // Queue next conversion
   command = 0x48;
-  ret = i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &command, 1, false, 100);
+  ret = i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &command, 1, false, 1000);
   if (ret < 0) {
     printf("TSYS01 Disconnected!\r\n");
     is_present = false;
@@ -47,7 +47,7 @@ bool TSYS01::check_device_presence(){
   }
   // Send the reset command
   uint8_t command = 0x1E;
-  auto ret = i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &command, 1, false, 100);
+  auto ret = i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &command, 1, false, 1000);
   is_present = (ret >= PICO_OK);
   return is_present;
 }
@@ -65,23 +65,23 @@ void TSYS01::initialize_device() {
   // Fetch calibration data
   uint8_t command = 0xA2;
   i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &command, 1, false, 100);
-  i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, reinterpret_cast<uint8_t *>(&k4), 2, false, 100);
+  i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, reinterpret_cast<uint8_t *>(&k4), 2, false, 1000);
 
   command = 0xA4;
   i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &command, 1, false, 100);
-  i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, reinterpret_cast<uint8_t *>(&k3), 2, false, 100);
+  i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, reinterpret_cast<uint8_t *>(&k3), 2, false, 1000);
 
   command = 0xA6;
   i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &command, 1, false, 100);
-  i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, reinterpret_cast<uint8_t *>(&k2), 2, false, 100);
+  i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, reinterpret_cast<uint8_t *>(&k2), 2, false, 1000);
 
   command = 0xA8;
   i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &command, 1, false, 100);
-  i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, reinterpret_cast<uint8_t *>(&k1), 2, false, 100);
+  i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, reinterpret_cast<uint8_t *>(&k1), 2, false, 1000);
 
   command = 0xAA;
   i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &command, 1, false, 100);
-  i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, reinterpret_cast<uint8_t *>(&k0), 2, false, 100);
+  i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, reinterpret_cast<uint8_t *>(&k0), 2, false, 1000);
 
   k0 = swap_uint16(k0);
   k1 = swap_uint16(k1);

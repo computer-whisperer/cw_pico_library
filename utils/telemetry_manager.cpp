@@ -3,6 +3,7 @@
 //
 
 #include "telemetry_manager.hpp"
+#include "pico/unique_id.h"
 
 #include <cassert>
 #include <time_manager.hpp>
@@ -72,7 +73,10 @@ void TelemetryManager::use_influxdb(InfluxDBClient* influxdb_client_in, const st
 }
 
 void TelemetryManager::update_tags(std::string tags) {
-  influxdb_tags = std::move(tags);
+  pico_unique_board_id_t unique_board_id;
+  pico_get_unique_board_id(&unique_board_id);
+  const auto board_id = unique_board_id.id[6] + (unique_board_id.id[7]<<8);
+  influxdb_tags = ",pico_id=" + std::to_string(board_id) + "" + tags;
 }
 
 void TelemetryManager::push_data_to_influxdb() {

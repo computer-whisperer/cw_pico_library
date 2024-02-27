@@ -48,7 +48,7 @@ I2CBusManager::I2CBusManager(i2c_inst_t *i2c_bus_in, uint32_t scl_pin, uint32_t 
   gpio_set_function(scl_pin, GPIO_FUNC_I2C);
   //gpio_pull_up(scl_pin);
   //gpio_pull_up(sda_pin);
-  i2c_init(i2c_bus_in, 400000);
+  i2c_init(i2c_bus_in, 50000);
   gpio_set_slew_rate(scl_pin, GPIO_SLEW_RATE_SLOW);
   gpio_set_slew_rate(sda_pin, GPIO_SLEW_RATE_SLOW);
 }

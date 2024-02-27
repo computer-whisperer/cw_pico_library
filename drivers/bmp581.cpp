@@ -199,20 +199,21 @@ void BMP581::pull_from_fifo() {
     memset(read_buffer, 0, sizeof(read_buffer));
     uint8_t bytes_to_read = available_samples * bytes_per_sample;
     assert(bytes_to_read <= sizeof(read_buffer));
-    uint8_t addr_value = BMP581::REG_FIFO_DATA;
+    uint8_t addr_value = BMP585::REG_FIFO_DATA;
 
-    i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &addr_value, 1, true, 100);
-    i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, read_buffer, bytes_to_read, false, 100);
+    i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &addr_value, 1, true, 1000);
+    i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, read_buffer, bytes_to_read, false, 1000);
 
-    uint64_t temp_data_timestamp = to_us_since_boot(get_absolute_time());
-    uint64_t press_data_timestamp = to_us_since_boot(get_absolute_time());
+    uint64_t buffer_time = (available_samples/2)*sample_period_us;
+    uint64_t temp_data_timestamp = to_us_since_boot(get_absolute_time()) - buffer_time;
+    uint64_t press_data_timestamp = to_us_since_boot(get_absolute_time()) - buffer_time;
 
     uint8_t *read_ptr = read_buffer;
     for (uint8_t i = 0; i < available_samples; i++) {
       if (read_ptr[0] == 0x7F) {
         // FIFO is empty or disabled
         // Somehow this state is actually reached sometimes. Nothing should break if this is reached, but it means that somehow
-        // the bmp581 told us there were more samples available then are actually readable.
+        // the bmp585 told us there were more samples available then are actually readable.
         break;
       }
       if (temp_in_fifo) {
@@ -220,16 +221,16 @@ void BMP581::pull_from_fifo() {
           float value = process_temperature_data_C(read_ptr[2], read_ptr[1], read_ptr[0]);
           temp_channel.new_data(value, from_us_since_boot(temp_data_timestamp));
         }
-        temp_data_timestamp -= sample_period_us;
+        temp_data_timestamp += sample_period_us;
         read_ptr += 3;
       }
       if (press_in_fifo) {
         if (read_ptr[2] | read_ptr[1] | read_ptr[0]) {
           float value = process_pressure_data_kPa(read_ptr[2], read_ptr[1], read_ptr[0]);
-          press_channel.new_data(value, from_us_since_boot(temp_data_timestamp));
+          press_channel.new_data(value, from_us_since_boot(press_data_timestamp));
           TelemetryManager::set_best_pressure_kpa(value);
         }
-        press_data_timestamp -= sample_period_us;
+        press_data_timestamp += sample_period_us;
         read_ptr += 3;
       }
     }
