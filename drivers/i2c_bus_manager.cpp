@@ -8,7 +8,7 @@
 
 #include "hardware/gpio.h"
 
-I2CBusManager::I2CBusManager(i2c_inst_t *i2c_bus_in, uint32_t scl_pin, uint32_t sda_pin): i2c_bus(i2c_bus_in) {
+I2CHostInterfacePicoHW::I2CHostInterfacePicoHW(i2c_inst_t* i2c_in, uint32_t scl_pin, uint32_t sda_pin): i2c_inst(i2c_in) {
   // Check state of scl and sda
   gpio_set_function(sda_pin, GPIO_FUNC_SIO);
   gpio_set_function(scl_pin, GPIO_FUNC_SIO);
@@ -46,11 +46,26 @@ I2CBusManager::I2CBusManager(i2c_inst_t *i2c_bus_in, uint32_t scl_pin, uint32_t 
 
   gpio_set_function(sda_pin, GPIO_FUNC_I2C);
   gpio_set_function(scl_pin, GPIO_FUNC_I2C);
-  //gpio_pull_up(scl_pin);
-  //gpio_pull_up(sda_pin);
-  i2c_init(i2c_bus_in, 50000);
+
+  i2c_init(i2c_inst, 400000);
   gpio_set_slew_rate(scl_pin, GPIO_SLEW_RATE_SLOW);
   gpio_set_slew_rate(sda_pin, GPIO_SLEW_RATE_SLOW);
+}
+
+int I2CHostInterfacePicoHW::write_blocking(uint8_t addr, const uint8_t *src, size_t len, bool nostop) {
+    return i2c_write_blocking(i2c_inst, addr, src, len, nostop);
+}
+
+int I2CHostInterfacePicoHW::read_blocking(uint8_t addr, uint8_t *dst, size_t len, bool nostop) {
+    return i2c_read_blocking(i2c_inst, addr, dst, len, nostop);
+}
+
+int I2CHostInterfacePicoHW::write_timeout(uint8_t addr, const uint8_t *src, size_t len, bool nostop) {
+  return i2c_write_timeout_per_char_us(i2c_inst, addr, src, len, nostop, 100);
+}
+
+int I2CHostInterfacePicoHW::read_timeout(uint8_t addr, uint8_t *dst, size_t len, bool nostop) {
+  return i2c_read_timeout_per_char_us(i2c_inst, addr, dst, len, nostop, 100);
 }
 
 void I2CBusManager::update() {
@@ -59,8 +74,8 @@ void I2CBusManager::update() {
   {
     for (auto driver : peripheral_drivers) {
       bool prev_connected = driver->is_present;
-      bool new_connected = driver->check_device_presence();
-      if (!prev_connected && new_connected) {
+      driver->update_device_presence();
+      if (!prev_connected && driver->is_present) {
         driver->initialize_device();
       }
     }

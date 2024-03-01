@@ -7,15 +7,14 @@
 
 #include <cstdio>
 
-BMP581::BMP581(i2c_inst_t* i2c_bus_in, bool addr_select_in) :
+BMP581::BMP581(I2CHostInterface* i2c_bus_in, bool addr_select_in) :
         I2CPeripheralDriver(i2c_bus_in, get_i2c_address(addr_select_in))
 {
 }
 
-bool BMP581::check_device_presence(){
+void BMP581::update_device_presence(){
   auto value = this->field_read(FIELD_CHIP_ID);
   is_present = value == 0x50;
-  return is_present;
 }
 
 void BMP581::initialize_device() {
@@ -52,16 +51,13 @@ void BMP581::register_write(uint8_t addr, uint8_t value) {
   uint8_t buf[2];
   buf[0] = addr;
   buf[1] = value;
-  //i2c_write_blocking_until(i2c_bus, i2c_addr, buf, 2, false, delayed_by_us(get_absolute_time(), 8000));
-  i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, buf, 2, false, 100);
+  i2c_bus->write_timeout(i2c_addr, buf, 2, false);
 }
 
 uint8_t BMP581::register_read(uint8_t addr) {
-  i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &addr, 1, true, 100);
-  //i2c_write_blocking_until(i2c_bus, i2c_addr, &addr, 1, true, delayed_by_us(get_absolute_time(), 8000));
+  i2c_bus->write_timeout(i2c_addr, &addr, 1, true);
   uint8_t data = 0;
-  i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, &data, 1, false, 100);
-  //i2c_read_blocking_until(i2c_bus, i2c_addr, &data, 1, false, delayed_by_us(get_absolute_time(), 8000));
+  i2c_bus->read_timeout(i2c_addr, &data, 1, false);
   return data;
 }
 
@@ -86,7 +82,7 @@ uint32_t BMP581::do_forced_measurement(float *temp_out, float *press_out) {
 }
 
 /*!
- * Start the "normal" mode of the bmp581, where it will automatically sample on its own
+ * Start the "normal" mode of the BMP581, where it will automatically sample on its own
  * @param odr_state Sample rate configuration, see datasheet for details
  */
 void BMP581::start_normal_mode(int odr_state, int osr_p, int osr_t) {
@@ -110,7 +106,7 @@ void BMP581::start_normal_mode(int odr_state, int osr_p, int osr_t) {
     assert(false);
   }
 
-  float datasheet_frequency = 0;
+  float datasheet_frequency;
   switch (odr_state) {
     case 0x00:
       datasheet_frequency = 240.000;
@@ -199,21 +195,20 @@ void BMP581::pull_from_fifo() {
     memset(read_buffer, 0, sizeof(read_buffer));
     uint8_t bytes_to_read = available_samples * bytes_per_sample;
     assert(bytes_to_read <= sizeof(read_buffer));
-    uint8_t addr_value = BMP585::REG_FIFO_DATA;
+    uint8_t addr_value = BMP581::REG_FIFO_DATA;
 
-    i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &addr_value, 1, true, 1000);
-    i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, read_buffer, bytes_to_read, false, 1000);
+    i2c_bus->write_timeout(i2c_addr, &addr_value, 1, true);
+    i2c_bus->read_timeout(i2c_addr, read_buffer, bytes_to_read, false);
 
-    uint64_t buffer_time = (available_samples/2)*sample_period_us;
-    uint64_t temp_data_timestamp = to_us_since_boot(get_absolute_time()) - buffer_time;
-    uint64_t press_data_timestamp = to_us_since_boot(get_absolute_time()) - buffer_time;
+    uint64_t temp_data_timestamp = to_us_since_boot(get_absolute_time());
+    uint64_t press_data_timestamp = to_us_since_boot(get_absolute_time());
 
     uint8_t *read_ptr = read_buffer;
     for (uint8_t i = 0; i < available_samples; i++) {
       if (read_ptr[0] == 0x7F) {
         // FIFO is empty or disabled
         // Somehow this state is actually reached sometimes. Nothing should break if this is reached, but it means that somehow
-        // the bmp585 told us there were more samples available then are actually readable.
+        // the BMP581 told us there were more samples available then are actually readable.
         break;
       }
       if (temp_in_fifo) {

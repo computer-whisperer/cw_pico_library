@@ -5,7 +5,7 @@
 #ifndef THERMO_SCOPE_BMP585_HPP
 #define THERMO_SCOPE_BMP585_HPP
 #include <telemetry_manager.hpp>
-
+#include <cstdint>
 #include "i2c_bus_manager.hpp"
 
 /*!
@@ -219,16 +219,16 @@ public:
     return (float) raw / (1 << 16);
   }
 
-  bool check_device_presence() override;
+  void update_device_presence() override;
 
   static constexpr uint8_t get_i2c_address(bool addr_select){
     return addr_select? 0x47 : 0x46;
   }
 
-  BMP585(i2c_inst_t* i2c_bus_in, bool addr_select_in);
+  BMP585(I2CHostInterface* i2c_bus_in, bool addr_select_in);
 
-  void initialize_device();
-  void update();
+  void initialize_device() override;
+  void update() override;
 
   void set_fifo_mode(bool temp_in_fifo_in, bool press_in_fifo_in);
   uint32_t do_forced_measurement(float *temp_out, float *press_out);

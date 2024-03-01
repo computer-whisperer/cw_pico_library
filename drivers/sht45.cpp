@@ -4,14 +4,14 @@
 
 #include "sht45.hpp"
 
-SHT45::SHT45(i2c_inst_t* i2c_bus_in) :
+SHT45::SHT45(I2CHostInterface* i2c_bus_in) :
         I2CPeripheralDriver(i2c_bus_in, 0x44)
 {
 }
 
 void SHT45::do_normal_sample() {
   uint8_t rx_bytes[6];
-  auto ret = i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, rx_bytes, 6, false, 100);
+  auto ret = i2c_bus->read_timeout(i2c_addr, rx_bytes, 6, false);
   if (ret >= 0) {
     auto t_ticks = rx_bytes[0] * 256 + rx_bytes[1];
     auto checksum_t = rx_bytes[2];
@@ -30,33 +30,32 @@ void SHT45::do_normal_sample() {
 
   // Queue next conversion
   uint8_t command = 0xFD;
-  ret = i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &command, 1, false, 100);
+  ret = i2c_bus->write_timeout(i2c_addr, &command, 1, false);
   if (ret < 0) {
     printf("SHT45 Disconnected!\r\n");
     is_present = false;
   }
 }
 
-bool SHT45::check_device_presence(){
+void SHT45::update_device_presence(){
   if (is_present) {
     // Don't re-check if we think we are connected. It breaks this sensor.
-    return is_present;
+    return;
   }
   uint8_t command = 0x89;
-  auto ret = i2c_write_timeout_per_char_us(i2c_bus, i2c_addr, &command, 1, false, 100);
+  auto ret = i2c_bus->write_timeout(i2c_addr, &command, 1, false);
   if (ret < PICO_OK) {
     is_present = false;
-    return false;
+    return;
   }
   sleep_us(10000);
   uint8_t data[6];
-  ret = i2c_read_timeout_per_char_us(i2c_bus, i2c_addr, data, 6, false, 100);
+  ret = i2c_bus->read_timeout(i2c_addr, data, 6, false);
   if (ret < PICO_OK) {
     is_present = false;
-    return false;
+    return;
   }
   is_present = data[0] != 0;
-  return is_present;
 }
 
 void SHT45::update() {

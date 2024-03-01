@@ -9,7 +9,7 @@
 // Created by christian on 6/7/23.
 //
 
-#include "bme280.hpp"
+
 #include <cstdint>
 #include "hardware/i2c.h"
 #include "pico/binary_info.h"
@@ -26,13 +26,13 @@ class BME280 : public I2CPeripheralDriver
   absolute_time_t last_fetch_timestamp = nil_time;
 
 public:
-  bool check_device_presence();
+  void update_device_presence();
 
   static constexpr uint8_t get_i2c_address(bool addr_select){
     return addr_select? 0x77 : 0x76;
   }
 
-  BME280(i2c_inst_t* i2c_bus_in, bool addr_select_in);
+  BME280(I2CHostInterface* i2c_bus_in, bool addr_select_in);
 
   void initialize_device();
 

@@ -22,9 +22,9 @@ class TSYS01 final : public I2CPeripheralDriver {
   absolute_time_t last_fetch_timestamp = nil_time;
   TelemetryManager::Channel temp_channel{"tsys01_temp", "c"};
 public:
-  explicit TSYS01(i2c_inst_t* i2c_bus_in, bool addr_select_in);
+  explicit TSYS01(I2CHostInterface* i2c_bus_in, bool addr_select_in);
   void do_normal_sample();
-  bool check_device_presence() override;
+  void update_device_presence() override;
   void update() override;
   void initialize_device() override;
 
