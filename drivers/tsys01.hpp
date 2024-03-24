@@ -20,9 +20,12 @@ class TSYS01 final : public I2CPeripheralDriver {
   double k3_coeff = 0;
   double k4_coeff = 0;
   absolute_time_t last_fetch_timestamp = nil_time;
-  TelemetryManager::Channel temp_channel{"tsys01_temp", "c"};
+  float latest_temperature_c = 0;
+  TelemetryManager::Channel temp_channel;
 public:
-  explicit TSYS01(I2CHostInterface* i2c_bus_in, bool addr_select_in);
+  float get_latest_temperature_c();
+
+  explicit TSYS01(I2CHostInterface* i2c_bus_in, bool addr_select_in, const std::string& name_in = "tsys01");
   void do_normal_sample();
   void update_device_presence() override;
   void update() override;

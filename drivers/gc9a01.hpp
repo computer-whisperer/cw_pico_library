@@ -12,7 +12,7 @@
 class GC9A01 final: public TFT_ESPI{
   static lv_disp_drv_t l_disp_drv;
 public:
-  GC9A01(spi_inst_t * spi_inst_in, int32_t cs_gpio_in, int32_t dc_gpio_in, int32_t rst_gpio_in, int32_t bl_gpio_in);
+  GC9A01(spi_inst_t * spi_inst_in, int32_t cs_gpio_in, int32_t dc_gpio_in, CWGPIO* rst_gpio_in, int32_t bl_gpio_in);
 
   void do_display_callback(struct _lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_color_t * color_p) override;
 };

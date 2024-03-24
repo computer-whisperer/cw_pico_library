@@ -13,7 +13,7 @@
 #define TFT_WIDTH 240
 #include "GC9A01_Defines.h"
 
-GC9A01::GC9A01(spi_inst_t* spi_inst_in, int32_t cs_gpio_in, int32_t dc_gpio_in, int32_t rst_gpio_in, int32_t bl_gpio_in) :
+GC9A01::GC9A01(spi_inst_t* spi_inst_in, int32_t cs_gpio_in, int32_t dc_gpio_in, CWGPIO* rst_gpio_in, int32_t bl_gpio_in) :
   TFT_ESPI(spi_inst_in, cs_gpio_in, dc_gpio_in, rst_gpio_in, bl_gpio_in, TFT_WIDTH, TFT_HEIGHT)
 {
 #include "GC9A01_Init.h"

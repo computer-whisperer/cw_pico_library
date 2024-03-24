@@ -69,6 +69,7 @@ void NTPClient::ntp_recv(udp_pcb *pPcb, struct pbuf *pPbuf, const ip_addr_t *pAd
     uint32_t seconds_since_1900 = seconds_buf[0] << 24 | seconds_buf[1] << 16 | seconds_buf[2] << 8 | seconds_buf[3];
     uint64_t seconds_since_1970 = seconds_since_1900 - NTP_DELTA;
     TimeManager::new_ntp_time(seconds_since_1970*1000*1000, get_absolute_time());
+    current_offset_us = seconds_since_1970*1000*1000 - to_us_since_boot(get_absolute_time());
     has_fix = true;
     printf("Got epoch: %llu\r\n", seconds_since_1970);
   } else {

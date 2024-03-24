@@ -4,8 +4,14 @@
 
 #include "tsys01.hpp"
 
-TSYS01::TSYS01(I2CHostInterface* i2c_bus_in, bool addr_select_in) :
-        I2CPeripheralDriver(i2c_bus_in, get_i2c_address(addr_select_in))
+float TSYS01::get_latest_temperature_c()
+{
+    return latest_temperature_c;
+}
+
+TSYS01::TSYS01(I2CHostInterface* i2c_bus_in, bool addr_select_in, const std::string& name_in) :
+        I2CPeripheralDriver(i2c_bus_in, get_i2c_address(addr_select_in)),
+        temp_channel(name_in + "_temp", "c")
 {
 }
 
@@ -29,6 +35,7 @@ void TSYS01::do_normal_sample() {
     result += k4_coeff * raw_power;
     temp_channel.new_data(result);
     TelemetryManager::set_best_temperature_c(result);
+    latest_temperature_c = result;
   }
 
   // Queue next conversion

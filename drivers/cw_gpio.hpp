@@ -11,16 +11,18 @@ class CWGPIO {
 public:
   virtual ~CWGPIO() = default;
 
-  virtual void gpio_put(bool value);
-  virtual bool gpio_get();
-  virtual void gpio_set_dir(bool out);
+  virtual void gpio_put(bool value) {}
+  virtual bool gpio_get() {return false;}
+  virtual void gpio_set_dir(bool out)  {}
 };
 
 class CWGPIOPicoHW final : public CWGPIO {
   uint32_t channel;
 
 public:
-  explicit CWGPIOPicoHW(const uint32_t channel_in) : channel(channel_in) {};
+  explicit CWGPIOPicoHW(const uint32_t channel_in) : channel(channel_in) {
+    ::gpio_init(channel);
+  };
   void gpio_put(const bool value) const {
     ::gpio_put(channel, value);
   }

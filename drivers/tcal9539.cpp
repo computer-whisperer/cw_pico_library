@@ -6,8 +6,11 @@
 
 TCAL9539::TCAL9539(I2CHostInterface * i2c_bus_in, uint8_t i2c_addr_in, uint32_t int_gpio_in, uint32_t reset_gpio_in):
     I2CPeripheralDriver(i2c_bus_in, i2c_addr_in), int_gpio(int_gpio_in), reset_gpio(reset_gpio_in) {
+  ::gpio_init(reset_gpio);
   ::gpio_set_dir(reset_gpio, GPIO_OUT);
   ::gpio_put(reset_gpio, true);
+  ::gpio_init(int_gpio);
+  ::gpio_set_dir(int_gpio, GPIO_IN);
 };
 
 void TCAL9539::register_write(const uint8_t addr, const uint8_t value) const {
@@ -33,6 +36,9 @@ void TCAL9539::initialize_device() {
 }
 
 void TCAL9539::update_device_presence() {
+  if (is_present) {
+    return;
+  }
   uint8_t addr = RegisterMap::input_port_0;
   auto ret = i2c_bus->write_timeout(i2c_addr, &addr, 1, true);
   if (ret < 0) {
@@ -139,6 +145,11 @@ void TCAL9539::push_configuration(bool force) {
 void TCAL9539::poll_status() {
   if (!is_present) return;
 
+  if (absolute_time_diff_us(last_status_poll_time, get_absolute_time()) < 10000) {
+    return;
+  }
+  last_status_poll_time = get_absolute_time();
+
   last_status.input_port_0 = register_read(RegisterMap::input_port_0);
   last_status.input_port_1 = register_read(RegisterMap::input_port_1);
   last_status.interrupt_status_register_0 = register_read(RegisterMap::interrupt_status_register_0);
@@ -146,15 +157,17 @@ void TCAL9539::poll_status() {
 }
 
 void TCAL9539::update() {
+
   push_configuration();
   poll_status();
 }
 
-bool TCAL9539::gpio_get(uint32_t channel) const {
+bool TCAL9539::gpio_get(uint32_t channel) {
+  poll_status();
   if (channel < 8) {
     return (last_status.input_port_0 & (1 << channel)) != 0;
   }
-  return (last_status.input_port_1 & (1 << (channel - 8))) != 0;
+  return (last_status.input_port_1 & (1 << (channel - 10))) != 0;
 }
 
 void TCAL9539::gpio_put(uint32_t channel, bool value) {
@@ -165,31 +178,34 @@ void TCAL9539::gpio_put(uint32_t channel, bool value) {
       staged_configuration.output_port_0 &= ~(1 << channel);
     }
   }
-  if (channel >= 8) {
+  if (channel >= 10) {
     if (value) {
-      staged_configuration.output_port_1 |= (1 << (channel - 8));
+      staged_configuration.output_port_1 |= (1 << (channel - 10));
     } else {
-      staged_configuration.output_port_1 &= ~(1 << (channel - 8));
+      staged_configuration.output_port_1 &= ~(1 << (channel - 10));
     }
   }
   staged_configuration_version++;
+  push_configuration();
 }
 
 void TCAL9539::gpio_set_dir(uint32_t channel, bool out) {
   if (channel < 8) {
-    if (out) {
+    if (!out) {
       staged_configuration.configuration_0 |= (1 << channel);
     } else {
       staged_configuration.configuration_0 &= ~(1 << channel);
     }
   }
-  if (channel >= 8) {
-    if (out) {
-      staged_configuration.configuration_1 |= (1 << (channel - 8));
+  if (channel >= 10) {
+    if (!out) {
+      staged_configuration.configuration_1 |= (1 << (channel - 10));
     } else {
-      staged_configuration.configuration_1 &= ~(1 << (channel - 8));
+      staged_configuration.configuration_1 &= ~(1 << (channel - 10));
     }
   }
+  staged_configuration_version++;
+  push_configuration();
 }
 
 

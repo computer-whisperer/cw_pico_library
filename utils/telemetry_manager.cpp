@@ -80,6 +80,9 @@ void TelemetryManager::update_tags(std::string tags) {
 }
 
 void TelemetryManager::push_data_to_influxdb() {
+  if (!enable_influxdb) {
+    return;
+  }
   DataPoint new_point{};
   while (queue_try_remove(&intercore_influxdb_data_queue, &new_point))
   {

@@ -4,8 +4,10 @@
 
 #include "sht45.hpp"
 
-SHT45::SHT45(I2CHostInterface* i2c_bus_in) :
-        I2CPeripheralDriver(i2c_bus_in, 0x44)
+SHT45::SHT45(I2CHostInterface* i2c_bus_in, const std::string& name_in) :
+        I2CPeripheralDriver(i2c_bus_in, 0x44),
+        temp_channel(name_in + "_temp", "c"),
+        humidity_channel(name_in + "_rel_humidity")
 {
 }
 

@@ -64,7 +64,7 @@ InfluxDBClient::InfluxDBClient(
   {
     header_data += "Content-Encoding: gzip\r\n";
   }
-  influxdb_pcb = tcp_new();
+  //influxdb_pcb = tcp_new();
 }
 
 
@@ -450,7 +450,7 @@ void InfluxDBClient::push_double(const char* measurement, const char * tags, con
   }
   push_data_start(measurement, tags, name, timestamp_us);
   working_buffer_pos += snprintf(working_buffer+working_buffer_pos, sizeof(working_buffer) - working_buffer_pos,
-                                 "=%.8f", value);
+                                 "=%.8e", value);
   push_data_end();
 }
 
@@ -461,7 +461,7 @@ void InfluxDBClient::push_float(const char* measurement, const char * tags, cons
   }
   push_data_start(measurement, tags, name, timestamp_us);
   working_buffer_pos += snprintf(working_buffer+working_buffer_pos, sizeof(working_buffer) - working_buffer_pos,
-                                 "=%.8f", value);
+                                 "=%.8e", value);
   push_data_end();
 }
 

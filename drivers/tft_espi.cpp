@@ -54,7 +54,7 @@ void TFT_ESPI::writedata(uint8_t data) {
   spi_write_blocking(spi_inst, &data, 1);
 }
 
-TFT_ESPI::TFT_ESPI(spi_inst_t * spi_inst_in, int32_t cs_gpio_in, int32_t dc_gpio_in, int32_t rst_gpio_in, int32_t bl_gpio_in, uint32_t width_in, uint32_t height_in):
+TFT_ESPI::TFT_ESPI(spi_inst_t * spi_inst_in, int32_t cs_gpio_in, int32_t dc_gpio_in, CWGPIO* rst_gpio_in, int32_t bl_gpio_in, uint32_t width_in, uint32_t height_in):
     spi_inst(spi_inst_in),
     cs_gpio(cs_gpio_in),
     dc_gpio(dc_gpio_in),
@@ -69,23 +69,22 @@ TFT_ESPI::TFT_ESPI(spi_inst_t * spi_inst_in, int32_t cs_gpio_in, int32_t dc_gpio
   gpio_init(dc_gpio);
   gpio_set_dir(dc_gpio, GPIO_OUT);
   gpio_put(dc_gpio, true);
-  gpio_init(rst_gpio);
-  gpio_set_dir(rst_gpio, GPIO_OUT);
-  gpio_put(rst_gpio, true);
+  rst_gpio->gpio_set_dir(GPIO_OUT);
+  rst_gpio->gpio_put(true);
   //gpio_init(bl_gpio);
   //gpio_set_dir(bl_gpio, GPIO_OUT);
   //gpio_put(bl_gpio, true);
 
   // Do reset
-  gpio_put(rst_gpio, true);
+  rst_gpio->gpio_put(true);
   sleep_ms(10);
-  gpio_put(rst_gpio, false);
+  rst_gpio->gpio_put(false);
   sleep_ms(100);
-  gpio_put(rst_gpio, true);
+  rst_gpio->gpio_put(true);
   sleep_ms(100);
 
-  _init_height = height;
-  _init_width = width;
+  _init_height = _height;
+  _init_width = _width;
 
 
   // LCD BackLight PWM control
@@ -101,7 +100,8 @@ TFT_ESPI::TFT_ESPI(spi_inst_t * spi_inst_in, int32_t cs_gpio_in, int32_t dc_gpio
 
   pwm_set_wrap(bl_pwm_slice_num, 100);
   pwm_set_enabled(bl_pwm_slice_num, true);
-  pwm_set_chan_level(bl_pwm_slice_num, pwm_gpio_to_channel(bl_gpio), 50);
+  pwm_set_chan_level(bl_pwm_slice_num, pwm_gpio_to_channel(bl_gpio), 110);
+  gpio_set_slew_rate(bl_pwm_slice_num, GPIO_SLEW_RATE_SLOW);
 }
 
 static void hacky_flush_cb (struct _lv_disp_drv_t * disp_drv, const lv_area_t * area, lv_color_t * color_p) {

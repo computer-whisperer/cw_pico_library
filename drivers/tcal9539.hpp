@@ -45,25 +45,25 @@ public:
 
   class ConfigurationRegisters {
   public:
-    uint8_t output_port_0;
-    uint8_t output_port_1;
-    uint8_t polarity_inversion_0;
-    uint8_t polarity_inversion_1;
-    uint8_t configuration_0;
-    uint8_t configuration_1;
-    uint8_t output_drive_strength_00;
-    uint8_t output_drive_strength_01;
-    uint8_t output_drive_strength_10;
-    uint8_t output_drive_strength_11;
-    uint8_t input_latch_0;
-    uint8_t input_latch_1;
-    uint8_t pullup_pulldown_enable_0;
-    uint8_t pullup_pulldown_enable_1;
-    uint8_t pullup_pulldown_selection_0;
-    uint8_t pullup_pulldown_selection_1;
-    uint8_t interrupt_mask_register_0;
-    uint8_t interrupt_mask_register_1;
-    uint8_t output_port_configuration_register;
+    uint8_t output_port_0 = 0x00;
+    uint8_t output_port_1 = 0x00;
+    uint8_t polarity_inversion_0 = 0x00;
+    uint8_t polarity_inversion_1 = 0x00;
+    uint8_t configuration_0 = 0xFF;
+    uint8_t configuration_1 = 0xFF;
+    uint8_t output_drive_strength_00 = 0x00;
+    uint8_t output_drive_strength_01 = 0x00;
+    uint8_t output_drive_strength_10 = 0x00;
+    uint8_t output_drive_strength_11 = 0x00;
+    uint8_t input_latch_0 = 0x00;
+    uint8_t input_latch_1 = 0x00;
+    uint8_t pullup_pulldown_enable_0 = 0x00;
+    uint8_t pullup_pulldown_enable_1 = 0x00;
+    uint8_t pullup_pulldown_selection_0 = 0x00;
+    uint8_t pullup_pulldown_selection_1 = 0x00;
+    uint8_t interrupt_mask_register_0 = 0x00;
+    uint8_t interrupt_mask_register_1 = 0x00;
+    uint8_t output_port_configuration_register = 0x00;
   };
 
   class StatusRegisters {
@@ -92,9 +92,10 @@ public:
   void update() override;
 
   void gpio_put(uint32_t channel, bool value);
-  bool gpio_get(uint32_t channel) const;
+  bool gpio_get(uint32_t channel);
   void gpio_set_dir(uint32_t channel, bool out);
 
+   absolute_time_t last_status_poll_time = nil_time;
 };
 
 class CWGPIOTCAL9539 : public CWGPIO {

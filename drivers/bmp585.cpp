@@ -7,8 +7,10 @@
 
 #include <cstdio>
 
-BMP585::BMP585(I2CHostInterface* i2c_bus_in, bool addr_select_in) :
-        I2CPeripheralDriver(i2c_bus_in, get_i2c_address(addr_select_in))
+BMP585::BMP585(I2CHostInterface* i2c_bus_in, bool addr_select_in, const std::string& name_in) :
+        I2CPeripheralDriver(i2c_bus_in, get_i2c_address(addr_select_in)),
+        temp_channel(name_in + "_temp", "c"),
+        press_channel(name_in + "_press", "kpa")
 {
 }
 
@@ -24,7 +26,7 @@ void BMP585::initialize_device() {
   this->field_write(FIELD_CMD, 0xB6);
   sleep_ms(4);
 
-  this->field_write(FIELD_PAD_IF_DRV, 0x00);
+  this->field_write(FIELD_PAD_IF_DRV, 0x01);
 
   this->field_write(FIELD_PRESS_EN, 0x01);
   this->set_fifo_mode(true, true);

@@ -55,8 +55,8 @@ class BMP585: public I2CPeripheralDriver {
 
   absolute_time_t last_fetch_timestamp = nil_time;
 
-  TelemetryManager::Channel temp_channel{"bmp585_temp", "c"};
-  TelemetryManager::Channel press_channel{"bmp585_press", "kpa"};
+  TelemetryManager::Channel temp_channel;
+  TelemetryManager::Channel press_channel;
 public:
 
   static constexpr uint8_t REG_CMD = 0x7E;
@@ -225,7 +225,7 @@ public:
     return addr_select? 0x47 : 0x46;
   }
 
-  BMP585(I2CHostInterface* i2c_bus_in, bool addr_select_in);
+  BMP585(I2CHostInterface* i2c_bus_in, bool addr_select_in, const std::string& name_in = "bmp585");
 
   void initialize_device() override;
   void update() override;
