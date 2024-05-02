@@ -103,7 +103,7 @@ void TSYS01::initialize_device() {
 }
 
 void TSYS01::update() {
-  if (absolute_time_diff_us(last_fetch_timestamp, get_absolute_time()) > 10000)
+  if (absolute_time_diff_us(last_fetch_timestamp, get_absolute_time()) > 100000)
   {
     do_normal_sample();
     last_fetch_timestamp = get_absolute_time();

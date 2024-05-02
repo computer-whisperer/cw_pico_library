@@ -30,7 +30,7 @@ void BMP585::initialize_device() {
 
   this->field_write(FIELD_PRESS_EN, 0x01);
   this->set_fifo_mode(true, true);
-  start_normal_mode(0x08, 0x03, 0x03);
+  start_normal_mode(0x13, 0x03, 0x03);
 }
 
 //! Configure what measurements are stored in the bmp585 fifo registers
