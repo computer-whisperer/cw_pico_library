@@ -208,8 +208,8 @@ void BMP585::pull_from_fifo() {
     i2c_bus->write_timeout(i2c_addr, &addr_value, 1, true);
     i2c_bus->read_timeout(i2c_addr, read_buffer, bytes_to_read, false);
 
-    uint64_t temp_data_timestamp = to_us_since_boot(get_absolute_time());
-    uint64_t press_data_timestamp = to_us_since_boot(get_absolute_time());
+    uint64_t temp_data_timestamp = to_us_since_boot(get_absolute_time()) - available_samples*sample_period_us;
+    uint64_t press_data_timestamp = to_us_since_boot(get_absolute_time()) - available_samples*sample_period_us;
 
     uint8_t *read_ptr = read_buffer;
     for (uint8_t i = 0; i < available_samples; i++) {
@@ -225,17 +225,17 @@ void BMP585::pull_from_fifo() {
           temp_channel.new_data(value, from_us_since_boot(temp_data_timestamp));
           latest_temperature_c = value;
         }
-        temp_data_timestamp -= sample_period_us;
+        temp_data_timestamp += sample_period_us;
         read_ptr += 3;
       }
       if (press_in_fifo) {
         if (read_ptr[2] | read_ptr[1] | read_ptr[0]) {
           float value = process_pressure_data_kPa(read_ptr[2], read_ptr[1], read_ptr[0]);
           press_channel.new_data(value, from_us_since_boot(temp_data_timestamp));
-          TelemetryManager::set_best_pressure_kpa(value);
+        TelemetryManager::set_best_pressure_kpa(value);
           latest_pressure_kpa = value;
         }
-        press_data_timestamp -= sample_period_us;
+        press_data_timestamp += sample_period_us;
         read_ptr += 3;
       }
     }
