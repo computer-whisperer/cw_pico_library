@@ -8,7 +8,8 @@
 struct gpio_callback_association {
   uint32_t gpio_pin;
   uint32_t event_mask;
-  gpio_irq_callback_t callback;
+  gpio_isr_mux_callback_t callback;
+  void* attr;
 };
 
 std::vector<struct gpio_callback_association> registered_callbacks;
@@ -20,14 +21,14 @@ void main_gpio_isr(uint gpio_pin, uint32_t event_mask)
         (event_mask & callback.event_mask)  &&
         callback.callback)
     {
-      callback.callback(gpio_pin, event_mask);
+      callback.callback(gpio_pin, event_mask, callback.attr);
       return;
     }
   }
 }
 
-void register_gpio_isr(uint32_t gpio_pin, uint32_t event_mask, gpio_irq_callback_t callback)
+void register_gpio_isr(uint32_t gpio_pin, uint32_t event_mask, gpio_isr_mux_callback_t callback, void* attr)
 {
-  registered_callbacks.push_back({gpio_pin, event_mask, callback});
+  registered_callbacks.push_back({ .gpio_pin = gpio_pin, .event_mask = event_mask, .callback = callback, .attr = attr});
   gpio_set_irq_enabled_with_callback(gpio_pin, event_mask, true, main_gpio_isr);
 }

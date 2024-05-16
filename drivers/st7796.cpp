@@ -36,7 +36,7 @@ ST7796::ST7796(spi_inst_t* spi_inst_in, int32_t cs_gpio_in, int32_t dc_gpio_in, 
   dma_chan = dma_channel;
   dma_channel_cfg = dma_channel_get_default_config(dma_channel);
   channel_config_set_transfer_data_size(&dma_channel_cfg, DMA_SIZE_8);
-  channel_config_set_dreq(&dma_channel_cfg, DREQ_SPI1_TX);
+  channel_config_set_dreq(&dma_channel_cfg, spi_get_dreq(spi_inst, true));
   channel_config_set_read_increment(&dma_channel_cfg, true);
   channel_config_set_write_increment(&dma_channel_cfg, false);
 
@@ -103,14 +103,10 @@ void ST7796::do_display_callback(_lv_disp_drv_t* disp_drv, const lv_area_t* area
     uint16_t data = color_p[i].full;
     spi_write_blocking(spi_inst, reinterpret_cast<uint8_t *>(&data), 2);
   }*/
-
+#if 1
   // Color fix
   for (uint32_t i = 0; i < num_pixels; i++) {
-    lv_color_t color;
-    color.ch.red = 31 - color_p[i].ch.red;
-    color.ch.green = 63 - color_p[i].ch.green;
-    color.ch.blue = 31 - color_p[i].ch.blue;
-    color_p[i].full = swap_uint16(color.full);
+    color_p[i].full = ~color_p[i].full;
   }
 
   dma_channel_configure(
@@ -121,6 +117,15 @@ void ST7796::do_display_callback(_lv_disp_drv_t* disp_drv, const lv_area_t* area
         num_pixels*2,            // Number of transfers; in this case each is 1 byte.
         true                    // Start immediately.
   );
+  #else
+  //set all pixels to red for testing
+  for (uint32_t i = 0; i < num_pixels; i++) {
+    lv_color_t color;
+    color.full = 0xF800;
+    color_p[i] = color;
+  }
+  lv_disp_flush_ready(disp_drv);
 
+  #endif
   //setCS(false);
 }
